@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle with gradient -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4A90E2;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#357ABD;stop-opacity:1" />
+    </linearGradient>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  
+  <!-- Main circle background -->
+  <circle cx="128" cy="128" r="120" fill="url(#bgGradient)" filter="url(#shadow)"/>
+  
+  <!-- Clipboard/checklist background -->
+  <rect x="70" y="55" width="116" height="146" rx="8" fill="#FFFFFF" opacity="0.95"/>
+  
+  <!-- Clipboard clip at top -->
+  <rect x="108" y="45" width="40" height="16" rx="4" fill="#357ABD"/>
+  <rect x="113" y="50" width="30" height="8" rx="2" fill="#FFFFFF" opacity="0.4"/>
+  
+  <!-- Checklist lines with checkmarks -->
+  <!-- Item 1 - Checked -->
+  <circle cx="88" cy="85" r="8" fill="#4CAF50" stroke="#FFFFFF" stroke-width="2"/>
+  <path d="M 85 85 L 87 88 L 92 81" stroke="#FFFFFF" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="105" y="80" width="60" height="4" rx="2" fill="#CCCCCC"/>
+  <rect x="105" y="87" width="45" height="3" rx="1.5" fill="#E0E0E0"/>
+  
+  <!-- Item 2 - Checked -->
+  <circle cx="88" cy="120" r="8" fill="#4CAF50" stroke="#FFFFFF" stroke-width="2"/>
+  <path d="M 85 120 L 87 123 L 92 116" stroke="#FFFFFF" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="105" y="115" width="55" height="4" rx="2" fill="#CCCCCC"/>
+  <rect x="105" y="122" width="40" height="3" rx="1.5" fill="#E0E0E0"/>
+  
+  <!-- Item 3 - Current/Due (highlighted) -->
+  <circle cx="88" cy="155" r="8" fill="#FF9800" stroke="#FFFFFF" stroke-width="2"/>
+  <circle cx="88" cy="155" r="3" fill="#FFFFFF"/>
+  <rect x="105" y="150" width="65" height="4" rx="2" fill="#666666"/>
+  <rect x="105" y="157" width="50" height="3" rx="1.5" fill="#999999"/>
+  
+  <!-- Item 4 - Pending -->
+  <circle cx="88" cy="180" r="8" fill="#E0E0E0" stroke="#CCCCCC" stroke-width="2"/>
+  <rect x="105" y="175" width="50" height="4" rx="2" fill="#E0E0E0"/>
+  <rect x="105" y="182" width="35" height="3" rx="1.5" fill="#EEEEEE"/>
+</svg>
+

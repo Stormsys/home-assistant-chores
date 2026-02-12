@@ -1,0 +1,94 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up Chores",
+        "description": "This integration manages household chores via YAML configuration."
+      }
+    },
+    "abort": {
+      "already_configured": "Chores integration is already configured."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "chore_state": {
+        "name": "{name}",
+        "state": {
+          "inactive": "Inactive",
+          "pending": "Pending",
+          "due": "Due",
+          "started": "Started",
+          "completed": "Completed"
+        }
+      },
+      "trigger_progress": {
+        "name": "{name} Trigger",
+        "state": {
+          "idle": "Idle",
+          "active": "Active",
+          "done": "Done"
+        }
+      },
+      "completion_progress": {
+        "name": "{name} Completion",
+        "state": {
+          "idle": "Idle",
+          "active": "Active",
+          "done": "Done"
+        }
+      },
+      "last_completed": {
+        "name": "{name} Last Completed"
+      }
+    },
+    "binary_sensor": {
+      "attention": {
+        "name": "{name} Attention"
+      }
+    },
+    "button": {
+      "force_due": {
+        "name": "Force {name} Due"
+      },
+      "force_inactive": {
+        "name": "Force {name} Inactive"
+      },
+      "force_complete": {
+        "name": "Force {name} Complete"
+      }
+    }
+  },
+  "services": {
+    "force_due": {
+      "name": "Force Due",
+      "description": "Force a chore to the 'due' state.",
+      "fields": {
+        "chore_id": {
+          "name": "Chore ID",
+          "description": "The ID of the chore."
+        }
+      }
+    },
+    "force_inactive": {
+      "name": "Force Inactive",
+      "description": "Force a chore to the 'inactive' state.",
+      "fields": {
+        "chore_id": {
+          "name": "Chore ID",
+          "description": "The ID of the chore."
+        }
+      }
+    },
+    "force_complete": {
+      "name": "Force Complete",
+      "description": "Force a chore to the 'completed' state.",
+      "fields": {
+        "chore_id": {
+          "name": "Chore ID",
+          "description": "The ID of the chore."
+        }
+      }
+    }
+  }
+}

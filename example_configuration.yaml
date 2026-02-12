@@ -1,0 +1,169 @@
+# Example Chores Configuration for Home Assistant
+# Add this to your configuration.yaml
+
+chores:
+  chores:
+
+    # ─────────────────────────────────────────────
+    # WASHING MACHINE
+    # Power cycle detects machine finish, door open to complete
+    # ─────────────────────────────────────────────
+    - id: unload_washing
+      name: "Unload Washing Machine"
+      icon: mdi:washing-machine
+
+      trigger:
+        type: power_cycle
+        power_sensor: sensor.washing_machine_plug_power
+        current_sensor: sensor.washing_machine_plug_current
+        power_threshold: 10
+        current_threshold: 0.04
+        cooldown_minutes: 5
+        sensor:
+          name: "Washing Machine"
+          icon_idle: mdi:washing-machine-off
+          icon_active: mdi:washing-machine
+          icon_done: mdi:washing-machine-alert
+
+      completion:
+        type: contact
+        entity_id: binary_sensor.washing_machine_door_contact
+
+    # ─────────────────────────────────────────────
+    # ELVANSE
+    # Due at 6am, gate on bedroom door, cupboard open = done
+    # ─────────────────────────────────────────────
+    - id: take_elvanse
+      name: "Take Elvanse"
+      icon: mdi:pill
+
+      trigger:
+        type: daily
+        time: "06:00"
+        gate:
+          entity_id: binary_sensor.bedroom_door_contact
+          state: "on"
+        sensor:
+          name: "Elvanse Schedule"
+          icon_idle: mdi:clock-outline
+          icon_active: mdi:clock-alert
+          icon_done: mdi:bell-ring
+
+      completion:
+        type: contact
+        entity_id: binary_sensor.coffee_cupboard_door_contact
+        sensor:
+          name: "Coffee Cupboard"
+          icon_idle: mdi:door-closed
+          icon_done: mdi:door-open
+
+    # ─────────────────────────────────────────────
+    # FAY MORNING FEED
+    # Due at 8am, manual completion
+    # ─────────────────────────────────────────────
+    - id: feed_fay_morning
+      name: "Feed Fay Morning"
+      icon: mdi:dog-bowl
+
+      trigger:
+        type: daily
+        time: "08:00"
+
+      completion:
+        type: manual
+
+    # ─────────────────────────────────────────────
+    # FAY EVENING FEED
+    # Due at 18:00, gate on activity sensor, manual completion
+    # ─────────────────────────────────────────────
+    - id: feed_fay_evening
+      name: "Feed Fay Evening"
+      icon: mdi:dog-bowl
+
+      trigger:
+        type: daily
+        time: "18:00"
+        gate:
+          entity_id: binary_sensor.some_activity_sensor
+          state: "on"
+
+      completion:
+        type: manual
+
+    # ─────────────────────────────────────────────
+    # FAY MORNING WALK
+    # Due at 6am, presence cycle (leave + return) to complete
+    # ─────────────────────────────────────────────
+    - id: walk_fay_morning
+      name: "Walk Fay Morning"
+      icon: mdi:dog-side
+
+      trigger:
+        type: daily
+        time: "06:00"
+        sensor:
+          name: "Morning Walk Schedule"
+          icon_idle: mdi:clock-outline
+          icon_done: mdi:bell-ring
+
+      completion:
+        type: presence_cycle
+        entity_id: binary_sensor.potty_holder_fay
+        sensor:
+          name: "Morning Walk"
+          icon_idle: mdi:home
+          icon_active: mdi:walk
+          icon_done: mdi:home-check
+
+    # ─────────────────────────────────────────────
+    # FAY AFTERNOON WALK
+    # Due at 17:30, presence cycle to complete
+    # ─────────────────────────────────────────────
+    - id: walk_fay_afternoon
+      name: "Walk Fay Afternoon"
+      icon: mdi:dog-side
+
+      trigger:
+        type: daily
+        time: "17:30"
+        sensor:
+          name: "Afternoon Walk Schedule"
+          icon_idle: mdi:clock-outline
+          icon_done: mdi:bell-ring
+
+      completion:
+        type: presence_cycle
+        entity_id: binary_sensor.potty_holder_fay
+        sensor:
+          name: "Afternoon Walk"
+          icon_idle: mdi:home
+          icon_active: mdi:walk
+          icon_done: mdi:home-check
+
+    # ─────────────────────────────────────────────
+    # BINS
+    # Triggered by helper (set by automation on bin night),
+    # presence cycle (take bin out + come back) to complete
+    # ─────────────────────────────────────────────
+    - id: take_bins_out
+      name: "Take Bins Out"
+      icon: mdi:delete
+
+      trigger:
+        type: state_change
+        entity_id: input_boolean.bin_day
+        from: "off"
+        to: "on"
+        sensor:
+          name: "Bin Day"
+          icon_idle: mdi:delete-off
+          icon_done: mdi:delete-alert
+
+      completion:
+        type: presence_cycle
+        entity_id: person.diogo
+        sensor:
+          name: "Bin Run"
+          icon_idle: mdi:home
+          icon_active: mdi:walk
+          icon_done: mdi:home-check
