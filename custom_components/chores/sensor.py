@@ -1,10 +1,11 @@
 """Sensor entities for the Chores integration.
 
-Creates:
-  - ChoreStateSensor: main state machine (inactive/pending/due/started/completed)
+Creates (sensor.xxx):
   - TriggerProgressSensor: trigger sub-state (idle/active/done) — optional
   - CompletionProgressSensor: completion sub-state (idle/active/done) — optional
   - LastCompletedSensor: diagnostic timestamp of last completion
+
+Main state machine is in the chore platform (chore.xxx).
 """
 from __future__ import annotations
 
@@ -21,23 +22,12 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
-from homeassistant.helpers.entity_platform import (
-    AddEntitiesCallback,
-    async_get_current_platform,
-)
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .chore import Chore
-from .const import (
-    ATTR_CHORE_ID,
-    DOMAIN,
-    SERVICE_FORCE_COMPLETE,
-    SERVICE_FORCE_DUE,
-    SERVICE_FORCE_INACTIVE,
-    ChoreState,
-    SubState,
-)
+from .chore_core import Chore
+from .const import ATTR_CHORE_ID, DOMAIN, ChoreState, SubState
 from .coordinator import ChoresCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -54,93 +44,13 @@ async def async_setup_entry(
     entities: list[SensorEntity] = []
 
     for chore in coordinator.chores.values():
-        # Main state machine sensor (always created)
-        entities.append(ChoreStateSensor(coordinator, chore, entry))
-
-        # Trigger progress sensor (only if trigger.sensor configured)
         if chore.trigger.has_sensor:
             entities.append(TriggerProgressSensor(coordinator, chore, entry))
-
-        # Completion progress sensor (only if completion.sensor configured)
         if chore.completion.has_sensor:
             entities.append(CompletionProgressSensor(coordinator, chore, entry))
-
-        # Last completed diagnostic sensor (always created)
         entities.append(LastCompletedSensor(coordinator, chore, entry))
 
     async_add_entities(entities)
-
-    # Register entity services on the main sensor
-    platform = async_get_current_platform()
-    platform.async_register_entity_service(
-        SERVICE_FORCE_DUE,
-        {},
-        "async_force_due",
-    )
-    platform.async_register_entity_service(
-        SERVICE_FORCE_INACTIVE,
-        {},
-        "async_force_inactive",
-    )
-    platform.async_register_entity_service(
-        SERVICE_FORCE_COMPLETE,
-        {},
-        "async_force_complete",
-    )
-
-
-# ═══════════════════════════════════════════════════════════════════════
-# ChoreStateSensor (main state machine)
-# ═══════════════════════════════════════════════════════════════════════
-
-
-class ChoreStateSensor(CoordinatorEntity[ChoresCoordinator], SensorEntity):
-    """Main chore state machine sensor."""
-
-    _attr_has_entity_name = True
-
-    def __init__(
-        self,
-        coordinator: ChoresCoordinator,
-        chore: Chore,
-        entry: ConfigEntry,
-    ) -> None:
-        super().__init__(coordinator)
-        self._chore = chore
-        self._attr_unique_id = f"{DOMAIN}_{chore.id}"
-        self._attr_name = chore.name
-        self._attr_icon = chore.icon
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, chore.id)},
-        )
-        self._attr_options = [s.value for s in ChoreState]
-        self._attr_device_class = SensorDeviceClass.ENUM
-
-    @property
-    def native_value(self) -> str:
-        return self._chore.state.value
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        return self._chore.to_state_dict(self.coordinator.hass)
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        self.async_write_ha_state()
-
-    # ── Entity services ─────────────────────────────────────────────
-
-    async def async_force_due(self) -> None:
-        """Force chore to due."""
-        await self.coordinator.async_force_due(self._chore.id)
-
-    async def async_force_inactive(self) -> None:
-        """Force chore to inactive."""
-        await self.coordinator.async_force_inactive(self._chore.id)
-
-    async def async_force_complete(self) -> None:
-        """Force chore to completed."""
-        await self.coordinator.async_force_complete(self._chore.id)
 
 
 # ═══════════════════════════════════════════════════════════════════════

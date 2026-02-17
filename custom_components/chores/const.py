@@ -57,6 +57,7 @@ class ResetType(StrEnum):
     """Available reset types."""
 
     DELAY = "delay"
+    DAILY_RESET = "daily_reset"
     IMPLICIT_DAILY = "implicit_daily"
     IMPLICIT_EVENT = "implicit_event"
 
@@ -88,6 +89,7 @@ ATTR_FORCED: Final = "forced"
 ATTR_PREVIOUS_STATE: Final = "previous_state"
 ATTR_NEW_STATE: Final = "new_state"
 ATTR_STATE_LABEL: Final = "state_label"
+ATTR_COMPLETION_BUTTON: Final = "completion_button"
 
 # ── Defaults ────────────────────────────────────────────────────────
 DEFAULT_ICON: Final = "mdi:checkbox-marked-circle-outline"

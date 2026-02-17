@@ -14,9 +14,10 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .chore import Chore
+from .chore_core import Chore
 from .const import (
     ATTR_CHORE_ID,
     ATTR_CHORE_NAME,
@@ -29,6 +30,7 @@ from .const import (
     EVENT_CHORE_RESET,
     EVENT_CHORE_STARTED,
     ChoreState,
+    CompletionType,
 )
 from .store import ChoreStore
 
@@ -96,6 +98,16 @@ class ChoresCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Remove all state change listeners."""
         for chore in self._chores.values():
             chore.async_remove_listeners()
+
+    async def async_refresh_completion_buttons(self) -> None:
+        """Resolve force-complete button entity_id for manual-completion chores."""
+        registry = er.async_get(self.hass)
+        for chore in self._chores.values():
+            if chore.completion_type != CompletionType.MANUAL.value:
+                continue
+            unique_id = f"{DOMAIN}_{chore.id}_force_complete"
+            entity_id = registry.async_get_entity_id("button", DOMAIN, unique_id)
+            chore._completion_button_entity_id = entity_id  # noqa: SLF001
 
     @callback
     def _on_chore_state_change(

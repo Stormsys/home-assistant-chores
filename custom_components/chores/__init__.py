@@ -12,14 +12,15 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 
-from .chore import Chore
+from .chore_core import Chore
 from .const import DOMAIN
 from .coordinator import ChoresCoordinator
 from .store import ChoreStore
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [
+PLATFORMS: list[Platform | str] = [
+    "chore",
     Platform.BINARY_SENSOR,
     Platform.SENSOR,
     Platform.BUTTON,
@@ -119,11 +120,19 @@ COMPLETION_SCHEMA = vol.Any(
     ),
 )
 
-RESET_SCHEMA = vol.Schema(
-    {
-        vol.Required("type"): "delay",
-        vol.Optional("minutes", default=0): vol.All(int, vol.Range(min=0)),
-    }
+RESET_SCHEMA = vol.Any(
+    vol.Schema(
+        {
+            vol.Required("type"): "delay",
+            vol.Optional("minutes", default=0): vol.All(int, vol.Range(min=0)),
+        }
+    ),
+    vol.Schema(
+        {
+            vol.Required("type"): "daily_reset",
+            vol.Required("time"): cv.time,
+        }
+    ),
 )
 
 CHORE_SCHEMA = vol.Schema(
@@ -131,6 +140,11 @@ CHORE_SCHEMA = vol.Schema(
         vol.Required("id"): cv.string,
         vol.Required("name"): cv.string,
         vol.Optional("icon", default="mdi:checkbox-marked-circle-outline"): cv.icon,
+        vol.Optional("icon_inactive"): cv.icon,
+        vol.Optional("icon_pending"): cv.icon,
+        vol.Optional("icon_due"): cv.icon,
+        vol.Optional("icon_started"): cv.icon,
+        vol.Optional("icon_completed"): cv.icon,
         vol.Required("trigger"): TRIGGER_SCHEMA,
         vol.Optional("completion", default={"type": "manual"}): COMPLETION_SCHEMA,
         vol.Optional("reset"): RESET_SCHEMA,
@@ -233,6 +247,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Set up platforms
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Resolve completion_button entity_id for manual-completion chores
+    await coordinator.async_refresh_completion_buttons()
 
     # Set up listeners for all chores
     coordinator.setup_listeners()

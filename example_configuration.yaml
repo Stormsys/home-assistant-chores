@@ -1,5 +1,8 @@
 # Example Chores Configuration for Home Assistant
 # Add this to your configuration.yaml
+#
+# Main state machine: one chore.xxx entity per chore (e.g. chore.feed_fay_morning).
+# Trigger/completion progress and last-completed: sensor.xxx.
 
 chores:
   chores:

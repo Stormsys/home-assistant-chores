@@ -11,6 +11,18 @@
     }
   },
   "entity": {
+    "chore": {
+      "chore_state": {
+        "name": "{name}",
+        "state": {
+          "inactive": "Inactive",
+          "pending": "Pending",
+          "due": "Due",
+          "started": "Started",
+          "completed": "Completed"
+        }
+      }
+    },
     "sensor": {
       "chore_state": {
         "name": "{name}",

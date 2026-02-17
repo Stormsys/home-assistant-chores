@@ -60,6 +60,38 @@ class DelayReset(BaseReset):
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# DailyReset
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class DailyReset(BaseReset):
+    """Reset at a specific time every day.
+
+    Once the chore is completed, it stays 'completed' until the configured
+    reset time arrives, then transitions back to 'inactive'.
+    """
+
+    reset_type = ResetType.DAILY_RESET
+
+    def __init__(self, reset_time: time) -> None:
+        self._reset_time = reset_time
+
+    def should_reset(self, completed_at: datetime) -> bool:
+        now = dt_util.now()
+        completed_local = dt_util.as_local(completed_at)
+        # Find the next reset time after the chore was completed
+        next_reset = completed_local.replace(
+            hour=self._reset_time.hour,
+            minute=self._reset_time.minute,
+            second=0,
+            microsecond=0,
+        )
+        if completed_local >= next_reset:
+            next_reset += timedelta(days=1)
+        return now >= next_reset
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # ImplicitDailyReset
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -126,6 +158,14 @@ def create_reset(config: dict[str, Any] | None, trigger_type: TriggerType, trigg
         reset_type = config.get("type", "delay")
         if reset_type == "delay":
             return DelayReset(minutes=config.get("minutes", 0))
+        if reset_type == "daily_reset":
+            time_val = config.get("time", "00:00")
+            if isinstance(time_val, str):
+                parts = time_val.split(":")
+                t = time(int(parts[0]), int(parts[1]))
+            else:
+                t = time_val
+            return DailyReset(reset_time=t)
 
     # Default resets based on trigger type
     if trigger_type == TriggerType.DAILY:

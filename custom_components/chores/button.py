@@ -16,7 +16,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .chore import Chore
+from .chore_core import Chore
 from .const import DOMAIN
 from .coordinator import ChoresCoordinator
 
