@@ -220,10 +220,27 @@ Creates sensor entities per chore:
 | Entity | Unique ID suffix | Notes |
 |---|---|---|
 | `ChoreStateSensor` | `{domain}_{chore_id}` | Main state machine; `ENUM` device class; exposes `to_state_dict` as attributes. Entity services: `force_due`, `force_inactive`, `force_complete`. |
-| `TriggerProgressSensor` | `_{chore_id}_trigger` | Only created if `trigger.sensor` is configured; shows `idle/active/done`. |
-| `CompletionProgressSensor` | `_{chore_id}_completion` | Only created if `completion.sensor` is configured; shows `idle/active/done`. |
+| `TriggerProgressSensor` | `_{chore_id}_trigger` | Always created; shows `idle/active/done`. Default name and icons are type-aware (see below). |
+| `CompletionProgressSensor` | `_{chore_id}_completion` | Always created except for `manual` completion; shows `idle/active/done`. Default name and icons are type-aware (see below). |
 | `ResetProgressSensor` | `_{chore_id}_reset` | Always created; shows `idle/waiting` with `next_reset_at`. |
 | `LastCompletedSensor` | `_{chore_id}_last_completed` | Diagnostic; timestamp device class; exposes `completed_by`, `completion_count_today`, `completion_count_7d`. |
+
+**Default trigger sensor names/icons** (overridden by `sensor:` block in YAML):
+
+| Trigger type | Default name | idle icon | active icon | done icon |
+|---|---|---|---|---|
+| `daily` | `Daily at HH:MM` | `mdi:calendar-clock` | `mdi:calendar-alert` | `mdi:calendar-check` |
+| `power_cycle` | `Power Monitor` | `mdi:power-plug-off` | `mdi:power-plug` | `mdi:power-plug-outline` |
+| `state_change` | `State Monitor` | `mdi:toggle-switch-off-outline` | `mdi:toggle-switch` | `mdi:check-circle-outline` |
+
+**Default completion sensor names/icons** (overridden by `sensor:` block in YAML):
+
+| Completion type | Default name | idle icon | active icon | done icon |
+|---|---|---|---|---|
+| `contact` | `Contact` | `mdi:door-closed` | `mdi:door-open` | `mdi:check-circle` |
+| `contact_cycle` | `Contact Cycle` | `mdi:door-closed` | `mdi:door-open` | `mdi:door-closed-lock` |
+| `presence_cycle` | `Presence` | `mdi:home` | `mdi:walk` | `mdi:home-account` |
+| `sensor_state` | `Sensor State` | `mdi:eye-off-outline` | `mdi:eye` | `mdi:check-circle` |
 
 #### `binary_sensor.py`
 One `NeedsAttentionBinarySensor` per chore (`PROBLEM` device class):
@@ -450,9 +467,34 @@ Devices are registered per chore with:
 - `name`: `chore.name`
 - `model`: `chore.trigger_type` (formatted as title case)
 
-Entity unique IDs follow the pattern: `chores_{chore_id}[_suffix]`.
+### Unique ID convention
 
-The `_attr_has_entity_name = True` pattern is used on all entity classes, meaning HA combines the device name with the entity name for display.
+Unique IDs are stable internal identifiers (never change, survive renames). All follow `chores_{chore_id}[_suffix]`:
+
+| Entity | Unique ID |
+|---|---|
+| Main state sensor | `chores_{chore_id}` |
+| Trigger progress sensor | `chores_{chore_id}_trigger` |
+| Completion progress sensor | `chores_{chore_id}_completion` |
+| Reset progress sensor | `chores_{chore_id}_reset` |
+| Last completed diagnostic | `chores_{chore_id}_last_completed` |
+| Force due button | `chores_{chore_id}_force_due` |
+| Force inactive button | `chores_{chore_id}_force_inactive` |
+| Force complete button | `chores_{chore_id}_force_complete` |
+| Needs attention binary sensor | `chores_{chore_id}_needs_attention` |
+
+**Rule:** if you add a new entity for a chore, append a `_snake_case_suffix` to `chores_{chore_id}`. If you add an integration-level entity (not per-chore), use `chores_{descriptor}`.
+
+### Display name convention
+
+The `_attr_has_entity_name = True` pattern is used on all entity classes — HA concatenates the **device name** (chore name) with the **entity name** for display. Keep entity names short and role-focused, not repeating the chore name:
+
+| Entity name | Displayed as (chore "Take Vitamins") |
+|---|---|
+| `"Take Vitamins"` (main sensor) | "Take Vitamins" |
+| `"Daily at 06:00"` (trigger) | "Take Vitamins Daily at 06:00" |
+| `"Contact Cycle"` (completion) | "Take Vitamins Contact Cycle" |
+| `"Reset"` (reset sensor) | "Take Vitamins Reset" |
 
 ---
 

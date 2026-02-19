@@ -37,9 +37,12 @@ from .const import (
     SERVICE_FORCE_DUE,
     SERVICE_FORCE_INACTIVE,
     ChoreState,
+    CompletionType,
     SubState,
+    TriggerType,
 )
 from .coordinator import ChoresCoordinator
+from .triggers import DailyTrigger
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -58,12 +61,12 @@ async def async_setup_entry(
         # Main state machine sensor (always created)
         entities.append(ChoreStateSensor(coordinator, chore, entry))
 
-        # Trigger progress sensor (only if trigger.sensor configured)
-        if chore.trigger.has_sensor:
-            entities.append(TriggerProgressSensor(coordinator, chore, entry))
+        # Trigger progress sensor (always created; sensor: block overrides defaults)
+        entities.append(TriggerProgressSensor(coordinator, chore, entry))
 
-        # Completion progress sensor (only if completion.sensor configured)
-        if chore.completion.has_sensor:
+        # Completion progress sensor (always created except for manual, which has
+        # no sensor-detectable progress; sensor: block overrides defaults)
+        if chore.completion.completion_type != CompletionType.MANUAL:
             entities.append(CompletionProgressSensor(coordinator, chore, entry))
 
         # Reset progress sensor (always created)
@@ -171,15 +174,36 @@ class TriggerProgressSensor(CoordinatorEntity[ChoresCoordinator], SensorEntity):
         self._chore = chore
         sensor_cfg = chore.trigger.sensor_config or {}
         self._attr_unique_id = f"{DOMAIN}_{chore.id}_trigger"
-        self._attr_name = sensor_cfg.get("name", f"{chore.name} Trigger")
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, chore.id)},
         )
-        self._icon_idle = sensor_cfg.get("icon_idle")
-        self._icon_active = sensor_cfg.get("icon_active")
-        self._icon_done = sensor_cfg.get("icon_done")
         self._attr_options = [s.value for s in SubState]
         self._attr_device_class = SensorDeviceClass.ENUM
+
+        # Type-aware defaults (overridden by any sensor: block in YAML)
+        trigger = chore.trigger
+        if trigger.trigger_type == TriggerType.DAILY:
+            assert isinstance(trigger, DailyTrigger)
+            time_str = trigger.trigger_time.strftime("%H:%M")
+            default_name = f"Daily at {time_str}"
+            default_icon_idle = "mdi:calendar-clock"
+            default_icon_active = "mdi:calendar-alert"
+            default_icon_done = "mdi:calendar-check"
+        elif trigger.trigger_type == TriggerType.POWER_CYCLE:
+            default_name = "Power Monitor"
+            default_icon_idle = "mdi:power-plug-off"
+            default_icon_active = "mdi:power-plug"
+            default_icon_done = "mdi:power-plug-outline"
+        else:  # state_change
+            default_name = "State Monitor"
+            default_icon_idle = "mdi:toggle-switch-off-outline"
+            default_icon_active = "mdi:toggle-switch"
+            default_icon_done = "mdi:check-circle-outline"
+
+        self._attr_name = sensor_cfg.get("name", default_name)
+        self._icon_idle = sensor_cfg.get("icon_idle", default_icon_idle)
+        self._icon_active = sensor_cfg.get("icon_active", default_icon_active)
+        self._icon_done = sensor_cfg.get("icon_done", default_icon_done)
 
     @property
     def native_value(self) -> str:
@@ -225,15 +249,44 @@ class CompletionProgressSensor(CoordinatorEntity[ChoresCoordinator], SensorEntit
         self._chore = chore
         sensor_cfg = chore.completion.sensor_config or {}
         self._attr_unique_id = f"{DOMAIN}_{chore.id}_completion"
-        self._attr_name = sensor_cfg.get("name", f"{chore.name} Completion")
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, chore.id)},
         )
-        self._icon_idle = sensor_cfg.get("icon_idle")
-        self._icon_active = sensor_cfg.get("icon_active")
-        self._icon_done = sensor_cfg.get("icon_done")
         self._attr_options = [s.value for s in SubState]
         self._attr_device_class = SensorDeviceClass.ENUM
+
+        # Type-aware defaults (overridden by any sensor: block in YAML)
+        completion = chore.completion
+        if completion.completion_type == CompletionType.CONTACT:
+            default_name = "Contact"
+            default_icon_idle = "mdi:door-closed"
+            default_icon_active = "mdi:door-open"
+            default_icon_done = "mdi:check-circle"
+        elif completion.completion_type == CompletionType.CONTACT_CYCLE:
+            default_name = "Contact Cycle"
+            default_icon_idle = "mdi:door-closed"
+            default_icon_active = "mdi:door-open"
+            default_icon_done = "mdi:door-closed-lock"
+        elif completion.completion_type == CompletionType.PRESENCE_CYCLE:
+            default_name = "Presence"
+            default_icon_idle = "mdi:home"
+            default_icon_active = "mdi:walk"
+            default_icon_done = "mdi:home-account"
+        elif completion.completion_type == CompletionType.SENSOR_STATE:
+            default_name = "Sensor State"
+            default_icon_idle = "mdi:eye-off-outline"
+            default_icon_active = "mdi:eye"
+            default_icon_done = "mdi:check-circle"
+        else:
+            default_name = "Completion"
+            default_icon_idle = "mdi:checkbox-blank-outline"
+            default_icon_active = "mdi:checkbox-marked-circle-outline"
+            default_icon_done = "mdi:check-circle"
+
+        self._attr_name = sensor_cfg.get("name", default_name)
+        self._icon_idle = sensor_cfg.get("icon_idle", default_icon_idle)
+        self._icon_active = sensor_cfg.get("icon_active", default_icon_active)
+        self._icon_done = sensor_cfg.get("icon_done", default_icon_done)
 
     @property
     def native_value(self) -> str:
