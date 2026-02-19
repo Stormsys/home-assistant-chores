@@ -38,7 +38,8 @@ home-assistant-chores/
         ├── services.yaml      # Service descriptions for UI
         ├── store.py           # Persistent state store (HA .storage/chores)
         ├── strings.json       # Translations / entity strings
-        └── triggers.py        # Trigger type implementations + factory
+        ├── triggers.py        # Trigger type implementations + factory
+        └── logbook.py         # Logbook platform — human-readable entries for all state events
 ```
 
 ---
@@ -98,6 +99,7 @@ Key enums:
 Key constants:
 - `DOMAIN = "chores"`
 - `PLATFORMS = ["binary_sensor", "sensor", "button"]`
+- `CONF_LOGBOOK = "logbook"` — per-chore YAML key controlling logbook entries (default `true`)
 - `DEFAULT_ICON`, `DEFAULT_COOLDOWN_MINUTES`, `DEFAULT_POWER_THRESHOLD`, `DEFAULT_CURRENT_THRESHOLD`
 
 Events fired:
@@ -212,6 +214,18 @@ Integration entry point:
 
 ---
 
+### `logbook.py`
+Logbook platform automatically discovered by HA's logbook integration. Provides human-readable entries for every chore state transition event, linked to the chore's main sensor entity.
+
+- `async_describe_events(hass, async_describe_event)` — registers a single describe callback for all five `chores.*` events.
+- The callback looks up the chore from `hass.data` to access `trigger_type` and `completion_type` for context-aware messages.
+- Entity linkage is resolved at runtime from the entity registry using the unique ID `chores_{chore_id}`.
+- Returns `None` (suppressing the entry) when the chore has `logbook: false` in YAML — checked via the `logbook_enabled` flag included in every event's data payload.
+
+**Invariant:** whenever a new `TriggerType` or `CompletionType` is added, a matching branch must be added to `_describe_pending`/`_describe_due` (for triggers) or `_describe_started`/`_describe_completed` (for completions) in `logbook.py` so the new type gets a meaningful message rather than falling through to the generic default.
+
+---
+
 ### Platform Modules
 
 #### `sensor.py`
@@ -289,6 +303,8 @@ chores:
         inactive: "All good"
         due: "Needs doing"
         completed: "Done!"
+
+      logbook: true          # Optional. Set false to suppress logbook entries for this chore.
 ```
 
 ### Trigger Types
@@ -434,12 +450,14 @@ Fields that are **not** persisted (recalculated at runtime):
 2. Create a class extending `BaseTrigger` in `triggers.py`.
 3. Register in `TRIGGER_FACTORY`.
 4. Add a schema branch to `TRIGGER_SCHEMA` in `__init__.py`.
+5. Add a `_describe_pending` and `_describe_due` branch for the new type in `logbook.py`.
 
 **Adding a new completion type:**
 1. Add value to `CompletionType` in `const.py`.
 2. Create a class extending `BaseCompletion` in `completions.py`.
 3. Register in `COMPLETION_FACTORY`.
 4. Add a schema branch to `COMPLETION_SCHEMA` in `__init__.py`.
+5. Add a `_describe_started` and `_describe_completed` branch for the new type in `logbook.py`.
 
 **Adding a new reset type:**
 1. Add value to `ResetType` in `const.py`.
@@ -457,6 +475,7 @@ Fields that are **not** persisted (recalculated at runtime):
 - **Factory contract** — if you add a chore component type, keep its factory and the YAML schema in sync.
 - **Single coordinator per entry** — `hass.data[DOMAIN][entry.entry_id]["coordinator"]` is the canonical access point.
 - **Polling interval** — the coordinator polls every 60 seconds (`UPDATE_INTERVAL` in `coordinator.py`). Do not tighten this for time-sensitive checks; use event listeners instead.
+- **Logbook coverage** — when adding a new `TriggerType` or `CompletionType`, always add a matching branch in `logbook.py`. The logbook describe functions fall back to generic messages, but every type should have a specific, human-readable description. The `logbook_enabled` flag and `forced` flag must be included in all event data via `coordinator._fire_event`.
 
 ---
 

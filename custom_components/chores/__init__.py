@@ -13,7 +13,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 
 from .chore_core import Chore
-from .const import DOMAIN
+from .const import CONF_LOGBOOK, DOMAIN
 from .coordinator import ChoresCoordinator
 from .store import ChoreStore
 
@@ -155,6 +155,7 @@ CHORE_SCHEMA = vol.Schema(
             vol.Optional("started"): cv.string,
             vol.Optional("completed"): cv.string,
         }),
+        vol.Optional(CONF_LOGBOOK, default=True): cv.boolean,
     }
 )
 

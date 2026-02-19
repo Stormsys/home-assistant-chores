@@ -29,6 +29,7 @@ from .const import (
     ATTR_STATE_LABEL,
     ATTR_TRIGGER_STATE,
     ChoreState,
+    CONF_LOGBOOK,
     CompletionType,
     DEFAULT_ICON,
     SubState,
@@ -90,6 +91,9 @@ class Chore:
         self._due_since: datetime | None = None
         self._last_completed: datetime | None = None
         self._forced: bool = False
+
+        # Logbook setting
+        self._logbook_enabled: bool = config.get(CONF_LOGBOOK, True)
 
         # Completion history for stats
         self._completion_history: list[dict[str, Any]] = []
@@ -163,6 +167,11 @@ class Chore:
     def state_label(self) -> str:
         """Return human-readable label for current state."""
         return self._state_labels.get(self._state.value, self._state.value.capitalize())
+
+    @property
+    def logbook_enabled(self) -> bool:
+        """Return whether logbook entries are enabled for this chore."""
+        return self._logbook_enabled
 
     # ── State transitions ───────────────────────────────────────────
 

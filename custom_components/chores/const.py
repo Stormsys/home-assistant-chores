@@ -8,6 +8,7 @@ DOMAIN: Final = "chores"
 
 # ── Configuration keys ──────────────────────────────────────────────
 CONF_CHORES: Final = "chores"
+CONF_LOGBOOK: Final = "logbook"
 
 # ── Chore states (main state machine) ───────────────────────────────
 class ChoreState(StrEnum):
