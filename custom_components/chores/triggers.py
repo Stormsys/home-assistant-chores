@@ -173,44 +173,55 @@ class PowerCycleTrigger(BaseTrigger):
         unsub = async_track_state_change_event(hass, entities, _handle_state_change)
         self._listeners.append(unsub)
 
-    def _is_above_threshold(self, hass: HomeAssistant) -> bool:
-        """Check if power/current is above threshold."""
-        power_above = False
-        current_above = False
+    def _is_above_threshold(self, hass: HomeAssistant) -> bool | None:
+        """Check if power/current is above threshold.
+
+        Returns True/False when at least one sensor is readable.
+        Returns None when all configured sensors are unavailable/unknown —
+        callers must not treat this as a confirmed "below threshold".
+        """
+        any_readable = False
+        above = False
 
         if self._power_sensor:
             state = hass.states.get(self._power_sensor)
             if state and state.state not in ("unknown", "unavailable"):
+                any_readable = True
                 try:
-                    power_above = float(state.state) > self._power_threshold
+                    if float(state.state) > self._power_threshold:
+                        above = True
                 except (ValueError, TypeError):
                     pass
 
         if self._current_sensor:
             state = hass.states.get(self._current_sensor)
             if state and state.state not in ("unknown", "unavailable"):
+                any_readable = True
                 try:
-                    current_above = float(state.state) > self._current_threshold
+                    if float(state.state) > self._current_threshold:
+                        above = True
                 except (ValueError, TypeError):
                     pass
 
-        return power_above or current_above
+        return above if any_readable else None
 
     def _evaluate_power(self, hass: HomeAssistant) -> None:
         """Evaluate power state and update trigger."""
         above = self._is_above_threshold(hass)
         now = dt_util.utcnow()
 
-        if above:
+        if above is True:
             # Machine is running
             self._machine_running = True
             self._power_dropped_at = None
             if self._state == SubState.IDLE:
                 self.set_state(SubState.ACTIVE)
-        else:
+        elif above is False:
             if self._machine_running and self._power_dropped_at is None:
-                # Power just dropped -- start cooldown
+                # Power dropped below threshold — start cooldown
                 self._power_dropped_at = now
+        # above is None: all sensors unavailable — hold current state, do not
+        # start the cooldown timer so a connectivity blip cannot trigger a cycle.
 
     def evaluate(self, hass: HomeAssistant) -> SubState:
         """Check cooldown timer on every poll."""
@@ -416,6 +427,12 @@ class DailyTrigger(BaseTrigger):
                 if self._state != SubState.ACTIVE:
                     return
                 new_state = event.data.get("new_state")
+                old_state = event.data.get("old_state")
+                # Ignore startup/reconnection events (old_state None or unavailable)
+                # so that HA restoring state while the gate entity comes online does
+                # not silently satisfy the gate without a genuine state transition.
+                if old_state is None or old_state.state in ("unavailable", "unknown"):
+                    return
                 if new_state and new_state.state == self._gate_state:
                     self.set_state(SubState.DONE)
                     on_state_change()

@@ -106,6 +106,7 @@ COMPLETION_SCHEMA = vol.Any(
         {
             vol.Required("type"): "contact_cycle",
             vol.Required("entity_id"): cv.entity_id,
+            vol.Optional("debounce_seconds", default=2): vol.All(int, vol.Range(min=0)),
             vol.Optional("sensor"): SENSOR_DISPLAY_SCHEMA,
         }
     ),

@@ -33,11 +33,11 @@ chores:
         entity_id: binary_sensor.washing_machine_door_contact
 
     # ─────────────────────────────────────────────
-    # ELVANSE
+    # VITAMINS
     # Due at 6am, gate on bedroom door, cupboard open = done
     # ─────────────────────────────────────────────
-    - id: take_elvanse
-      name: "Take Elvanse"
+    - id: take_vitamins
+      name: "Take Vitamins"
       icon: mdi:pill
 
       trigger:
@@ -47,7 +47,7 @@ chores:
           entity_id: binary_sensor.bedroom_door_contact
           state: "on"
         sensor:
-          name: "Elvanse Schedule"
+          name: "Morning Vitamins Schedule"
           icon_idle: mdi:clock-outline
           icon_active: mdi:clock-alert
           icon_done: mdi:bell-ring

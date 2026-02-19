@@ -16,7 +16,7 @@ A Home Assistant custom integration for tracking household chores and recurring 
 Chores connects your smart home sensors to household tasks. Instead of manually ticking off a checklist, the integration watches your actual devices and marks chores done when the physical action is detected:
 
 - Washing machine finishes a cycle → "Unload Washing" becomes due → opening the machine door marks it complete
-- 6am arrives and the bedroom door opens → "Take Elvanse" becomes due → opening the pill cupboard marks it complete
+- 6am arrives and the bedroom door opens → "Take Vitamins" becomes due → opening the pill cupboard marks it complete
 - Dog walk time arrives → "Walk Fay" becomes due → leaving and returning home marks it complete
 - A helper boolean flips on → "Take Bins Out" becomes due → leaving the house and returning marks it complete
 
@@ -487,8 +487,8 @@ chores:
 
     # Due at 6am. Gate holds until bedroom door opens.
     # Opening and closing the pill cupboard marks it done.
-    - id: take_elvanse
-      name: "Take Elvanse"
+    - id: take_vitamins
+      name: "Take Vitamins"
       icon: mdi:pill
       state_labels:
         inactive: "Nothing to do"
