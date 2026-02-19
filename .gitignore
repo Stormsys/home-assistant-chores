@@ -11,3 +11,5 @@ venv/
 dist/
 build/
 Untitled
+.DS_Store
+**/.DS_Store

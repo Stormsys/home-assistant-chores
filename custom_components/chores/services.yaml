@@ -6,13 +6,6 @@ force_due:
     entity:
       integration: chores
       domain: sensor
-  fields:
-    chore_id:
-      name: Chore ID
-      description: The ID of the chore.
-      required: false
-      selector:
-        text:
 
 force_inactive:
   name: Force Inactive
@@ -21,13 +14,6 @@ force_inactive:
     entity:
       integration: chores
       domain: sensor
-  fields:
-    chore_id:
-      name: Chore ID
-      description: The ID of the chore.
-      required: false
-      selector:
-        text:
 
 force_complete:
   name: Force Complete
@@ -36,10 +22,3 @@ force_complete:
     entity:
       integration: chores
       domain: sensor
-  fields:
-    chore_id:
-      name: Chore ID
-      description: The ID of the chore.
-      required: false
-      selector:
-        text:

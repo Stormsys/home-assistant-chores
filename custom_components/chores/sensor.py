@@ -268,6 +268,7 @@ class ResetProgressSensor(CoordinatorEntity[ChoresCoordinator], SensorEntity):
     """Reset progress sensor — shows idle/waiting and reset attributes."""
 
     _attr_has_entity_name = True
+    _attr_translation_key = "reset_progress"
 
     # Native value is a simple two-value enum: "idle" or "waiting".
     # "idle"    = chore is not completed, reset has nothing to do.
@@ -283,7 +284,6 @@ class ResetProgressSensor(CoordinatorEntity[ChoresCoordinator], SensorEntity):
         super().__init__(coordinator)
         self._chore = chore
         self._attr_unique_id = f"{DOMAIN}_{chore.id}_reset"
-        self._attr_name = f"{chore.name} Reset"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, chore.id)},
         )
