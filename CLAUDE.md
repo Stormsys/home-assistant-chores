@@ -253,7 +253,7 @@ Creates sensor entities per chore:
 |---|---|---|---|---|
 | `contact` | `Contact` | `mdi:door-closed` | `mdi:door-open` | `mdi:check-circle` |
 | `contact_cycle` | `Contact Cycle` | `mdi:door-closed` | `mdi:door-open` | `mdi:door-closed-lock` |
-| `presence_cycle` | `Presence` | `mdi:home` | `mdi:walk` | `mdi:home-account` |
+| `presence_cycle` | `Presence` | `mdi:home` | `mdi:home-export-outline` | `mdi:home-import-outline` |
 | `sensor_state` | `Sensor State` | `mdi:eye-off-outline` | `mdi:eye` | `mdi:check-circle` |
 
 #### `binary_sensor.py`

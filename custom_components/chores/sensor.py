@@ -270,8 +270,8 @@ class CompletionProgressSensor(CoordinatorEntity[ChoresCoordinator], SensorEntit
         elif completion.completion_type == CompletionType.PRESENCE_CYCLE:
             default_name = "Presence"
             default_icon_idle = "mdi:home"
-            default_icon_active = "mdi:walk"
-            default_icon_done = "mdi:home-account"
+            default_icon_active = "mdi:home-export-outline"
+            default_icon_done = "mdi:home-import-outline"
         elif completion.completion_type == CompletionType.SENSOR_STATE:
             default_name = "Sensor State"
             default_icon_idle = "mdi:eye-off-outline"
@@ -395,6 +395,10 @@ class LastCompletedSensor(CoordinatorEntity[ChoresCoordinator], SensorEntity):
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, chore.id)},
         )
+
+    @property
+    def icon(self) -> str:
+        return "mdi:history"
 
     @property
     def native_value(self) -> datetime | None:
