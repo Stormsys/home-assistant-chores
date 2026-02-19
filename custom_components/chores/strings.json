@@ -13,7 +13,7 @@
   "entity": {
     "sensor": {
       "chore_state": {
-        "name": "{name}",
+        "name": "State",
         "state": {
           "inactive": "Inactive",
           "pending": "Pending",
@@ -23,7 +23,7 @@
         }
       },
       "trigger_progress": {
-        "name": "{name} Trigger",
+        "name": "Trigger",
         "state": {
           "idle": "Idle",
           "active": "Active",
@@ -31,7 +31,7 @@
         }
       },
       "completion_progress": {
-        "name": "{name} Completion",
+        "name": "Completion",
         "state": {
           "idle": "Idle",
           "active": "Active",
@@ -39,30 +39,30 @@
         }
       },
       "reset_progress": {
-        "name": "{name} Reset",
+        "name": "Reset",
         "state": {
           "idle": "Idle",
           "waiting": "Waiting"
         }
       },
       "last_completed": {
-        "name": "{name} Last Completed"
+        "name": "Last Completed"
       }
     },
     "binary_sensor": {
       "attention": {
-        "name": "{name} Attention"
+        "name": "Needs Attention"
       }
     },
     "button": {
       "force_due": {
-        "name": "Force {name} Due"
+        "name": "Force Due"
       },
       "force_inactive": {
-        "name": "Force {name} Inactive"
+        "name": "Force Inactive"
       },
       "force_complete": {
-        "name": "Force {name} Complete"
+        "name": "Force Complete"
       }
     }
   },

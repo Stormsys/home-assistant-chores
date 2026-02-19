@@ -337,6 +337,7 @@ class ResetProgressSensor(CoordinatorEntity[ChoresCoordinator], SensorEntity):
         super().__init__(coordinator)
         self._chore = chore
         self._attr_unique_id = f"{DOMAIN}_{chore.id}_reset"
+        self._attr_name = "Reset"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, chore.id)},
         )
@@ -389,7 +390,7 @@ class LastCompletedSensor(CoordinatorEntity[ChoresCoordinator], SensorEntity):
         super().__init__(coordinator)
         self._chore = chore
         self._attr_unique_id = f"{DOMAIN}_{chore.id}_last_completed"
-        self._attr_name = f"{chore.name} Last Completed"
+        self._attr_name = "Last Completed"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, chore.id)},
