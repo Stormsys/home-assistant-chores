@@ -21,6 +21,7 @@ from .chore_core import Chore
 from .const import (
     ATTR_CHORE_ID,
     ATTR_CHORE_NAME,
+    ATTR_FORCED,
     ATTR_NEW_STATE,
     ATTR_PREVIOUS_STATE,
     DOMAIN,
@@ -56,6 +57,8 @@ class ChoresCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         hass: HomeAssistant,
         entry: ConfigEntry,
         store: ChoreStore,
+        *,
+        logbook_enabled: bool = True,
     ) -> None:
         super().__init__(
             hass,
@@ -66,6 +69,7 @@ class ChoresCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._entry = entry
         self._store = store
         self._chores: dict[str, Chore] = {}
+        self._logbook_enabled: bool = logbook_enabled
 
     # ── Chore management ────────────────────────────────────────────
 
@@ -196,6 +200,8 @@ class ChoresCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ATTR_CHORE_NAME: chore.name,
             ATTR_PREVIOUS_STATE: old_state.value,
             ATTR_NEW_STATE: new_state.value,
+            ATTR_FORCED: chore.forced,
+            "logbook_enabled": self._logbook_enabled,
         }
         self.hass.bus.async_fire(event_name, event_data)
         _LOGGER.debug("Fired event %s for chore %s", event_name, chore.id)

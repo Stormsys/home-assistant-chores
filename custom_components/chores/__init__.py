@@ -13,7 +13,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 
 from .chore_core import Chore
-from .const import DOMAIN
+from .const import CONF_LOGBOOK, DOMAIN
 from .coordinator import ChoresCoordinator
 from .store import ChoreStore
 
@@ -162,6 +162,7 @@ CONFIG_SCHEMA = vol.Schema(
     {
         DOMAIN: vol.Schema(
             {
+                vol.Optional(CONF_LOGBOOK, default=True): cv.boolean,
                 vol.Optional("chores", default=[]): vol.All(
                     cv.ensure_list, [CHORE_SCHEMA]
                 ),
@@ -210,12 +211,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     store = ChoreStore(hass)
     await store.async_load()
 
-    # Initialize coordinator
-    coordinator = ChoresCoordinator(hass, entry, store)
-
     # Load chores from YAML
     yaml_config = hass.data[DOMAIN].get("yaml_config", {})
     chores_config = yaml_config.get("chores", [])
+    logbook_enabled: bool = yaml_config.get(CONF_LOGBOOK, True)
+
+    # Initialize coordinator
+    coordinator = ChoresCoordinator(hass, entry, store, logbook_enabled=logbook_enabled)
 
     for chore_config in chores_config:
         try:
