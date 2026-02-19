@@ -1,11 +1,11 @@
-# Entity services (target by entity_id on main chore entity, chore.xxx)
+# Entity services (target by entity_id on main chore sensor)
 force_due:
   name: Force Due
   description: Force a chore to the 'due' state from any state.
   target:
     entity:
       integration: chores
-      domain: chore
+      domain: sensor
   fields:
     chore_id:
       name: Chore ID
@@ -20,7 +20,7 @@ force_inactive:
   target:
     entity:
       integration: chores
-      domain: chore
+      domain: sensor
   fields:
     chore_id:
       name: Chore ID
@@ -35,7 +35,7 @@ force_complete:
   target:
     entity:
       integration: chores
-      domain: chore
+      domain: sensor
   fields:
     chore_id:
       name: Chore ID

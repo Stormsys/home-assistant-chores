@@ -11,18 +11,6 @@
     }
   },
   "entity": {
-    "chore": {
-      "chore_state": {
-        "name": "{name}",
-        "state": {
-          "inactive": "Inactive",
-          "pending": "Pending",
-          "due": "Due",
-          "started": "Started",
-          "completed": "Completed"
-        }
-      }
-    },
     "sensor": {
       "chore_state": {
         "name": "{name}",
@@ -48,6 +36,13 @@
           "idle": "Idle",
           "active": "Active",
           "done": "Done"
+        }
+      },
+      "reset_progress": {
+        "name": "{name} Reset",
+        "state": {
+          "idle": "Idle",
+          "waiting": "Waiting"
         }
       },
       "last_completed": {

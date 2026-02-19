@@ -28,6 +28,42 @@ class BaseReset(ABC):
     def should_reset(self, completed_at: datetime) -> bool:
         """Return True if the chore should reset to inactive now."""
 
+    def next_reset_at(self, completed_at: datetime) -> datetime | None:
+        """Return the datetime when the reset will trigger, or None if immediate/unknown."""
+        return None
+
+    def next_scheduled_reset(self) -> datetime | None:
+        """Return the next upcoming reset time regardless of chore state.
+
+        Useful for time-based resets (daily, implicit_daily) so the sensor
+        always shows when the next reset window is.  Returns None for resets
+        that depend on a completion event (delay, immediate).
+        """
+        return None
+
+    def extra_attributes(self, completed_at: datetime | None) -> dict[str, Any]:
+        """Return extra state attributes for the reset progress sensor.
+
+        ``completed_at`` is the timestamp the chore entered the *completed*
+        state.  It is ``None`` when the chore is *not* completed (the reset
+        is idle).
+        """
+        attrs: dict[str, Any] = {
+            "reset_type": self.reset_type.value,
+        }
+        if completed_at is not None:
+            nra = self.next_reset_at(completed_at)
+        else:
+            nra = self.next_scheduled_reset()
+
+        attrs["next_reset_at"] = nra.isoformat() if nra else None
+        if nra is not None:
+            remaining = (nra - dt_util.now()).total_seconds()
+            attrs["seconds_remaining"] = max(0, int(remaining))
+        else:
+            attrs["seconds_remaining"] = None
+        return attrs
+
     def snapshot_state(self) -> dict[str, Any]:
         """Return state for persistence."""
         return {"reset_type": self.reset_type.value}
@@ -58,6 +94,16 @@ class DelayReset(BaseReset):
         elapsed = (dt_util.utcnow() - completed_at).total_seconds()
         return elapsed >= self._minutes * 60
 
+    def next_reset_at(self, completed_at: datetime) -> datetime | None:
+        if self._minutes <= 0:
+            return None  # immediate
+        return completed_at + timedelta(minutes=self._minutes)
+
+    def extra_attributes(self, completed_at: datetime | None) -> dict[str, Any]:
+        attrs = super().extra_attributes(completed_at)
+        attrs["delay_minutes"] = self._minutes
+        return attrs
+
 
 # ═══════════════════════════════════════════════════════════════════════
 # DailyReset
@@ -76,19 +122,32 @@ class DailyReset(BaseReset):
     def __init__(self, reset_time: time) -> None:
         self._reset_time = reset_time
 
-    def should_reset(self, completed_at: datetime) -> bool:
-        now = dt_util.now()
-        completed_local = dt_util.as_local(completed_at)
-        # Find the next reset time after the chore was completed
-        next_reset = completed_local.replace(
+    def _next_occurrence_after(self, after: datetime) -> datetime:
+        """Return the next occurrence of reset_time after *after*."""
+        local = dt_util.as_local(after)
+        candidate = local.replace(
             hour=self._reset_time.hour,
             minute=self._reset_time.minute,
             second=0,
             microsecond=0,
         )
-        if completed_local >= next_reset:
-            next_reset += timedelta(days=1)
-        return now >= next_reset
+        if local >= candidate:
+            candidate += timedelta(days=1)
+        return candidate
+
+    def should_reset(self, completed_at: datetime) -> bool:
+        return dt_util.now() >= self._next_occurrence_after(completed_at)
+
+    def next_reset_at(self, completed_at: datetime) -> datetime | None:
+        return self._next_occurrence_after(completed_at)
+
+    def next_scheduled_reset(self) -> datetime | None:
+        return self._next_occurrence_after(dt_util.now())
+
+    def extra_attributes(self, completed_at: datetime | None) -> dict[str, Any]:
+        attrs = super().extra_attributes(completed_at)
+        attrs["reset_time"] = self._reset_time.isoformat()
+        return attrs
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -107,21 +166,32 @@ class ImplicitDailyReset(BaseReset):
     def __init__(self, trigger_time: time) -> None:
         self._trigger_time = trigger_time
 
-    def should_reset(self, completed_at: datetime) -> bool:
-        now = dt_util.now()
-        # Calculate the next trigger time after completion
-        completed_local = dt_util.as_local(completed_at)
-        next_trigger = completed_local.replace(
+    def _next_occurrence_after(self, after: datetime) -> datetime:
+        """Return the next occurrence of trigger_time after *after*."""
+        local = dt_util.as_local(after)
+        candidate = local.replace(
             hour=self._trigger_time.hour,
             minute=self._trigger_time.minute,
             second=0,
             microsecond=0,
         )
-        # If completed before today's trigger, next trigger is today
-        # If completed after today's trigger, next trigger is tomorrow
-        if completed_local >= next_trigger:
-            next_trigger += timedelta(days=1)
-        return now >= next_trigger
+        if local >= candidate:
+            candidate += timedelta(days=1)
+        return candidate
+
+    def should_reset(self, completed_at: datetime) -> bool:
+        return dt_util.now() >= self._next_occurrence_after(completed_at)
+
+    def next_reset_at(self, completed_at: datetime) -> datetime | None:
+        return self._next_occurrence_after(completed_at)
+
+    def next_scheduled_reset(self) -> datetime | None:
+        return self._next_occurrence_after(dt_util.now())
+
+    def extra_attributes(self, completed_at: datetime | None) -> dict[str, Any]:
+        attrs = super().extra_attributes(completed_at)
+        attrs["trigger_time"] = self._trigger_time.isoformat()
+        return attrs
 
 
 # ═══════════════════════════════════════════════════════════════════════

@@ -19,8 +19,7 @@ from .store import ChoreStore
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform | str] = [
-    "chore",
+PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
     Platform.SENSOR,
     Platform.BUTTON,
