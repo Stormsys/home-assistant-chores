@@ -322,7 +322,13 @@ class ContactCycleCompletion(BaseCompletion):
             if not self._enabled:
                 return
             new_state = event.data.get("new_state")
+            old_state = event.data.get("old_state")
             if not new_state:
+                return
+
+            # Ignore transitions from None/unavailable/unknown (startup or reconnection
+            # events) to avoid spurious two-step completions with no real contact cycle.
+            if old_state is None or old_state.state in ("unavailable", "unknown"):
                 return
 
             if new_state.state == "on" and self._state == SubState.IDLE:
