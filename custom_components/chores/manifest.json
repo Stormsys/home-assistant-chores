@@ -4,9 +4,9 @@
   "codeowners": [],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/your-repo/ha-chores",
+  "documentation": "https://github.com/Stormsys/home-assistant-chores",
   "iot_class": "local_push",
-  "issue_tracker": "https://github.com/your-repo/ha-chores/issues",
+  "issue_tracker": "https://github.com/Stormsys/home-assistant-chores/issues",
   "requirements": [],
   "version": "0.1.0-alpha.1"
 }
