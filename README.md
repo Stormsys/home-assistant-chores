@@ -1,9 +1,9 @@
 # Chores for Home Assistant
 
-[![GitHub Release](https://img.shields.io/github/v/release/your-repo/ha-chores?style=for-the-badge)](https://github.com/your-repo/ha-chores/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/Stormsys/home-assistant-chores?style=for-the-badge)](https://github.com/Stormsys/home-assistant-chores/releases)
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://github.com/hacs/integration)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1.0+-blue?style=for-the-badge&logo=home-assistant)](https://www.home-assistant.io/)
-[![Alpha](https://img.shields.io/badge/Status-Alpha-red?style=for-the-badge)](https://github.com/your-repo/ha-chores)
+[![Alpha](https://img.shields.io/badge/Status-Alpha-red?style=for-the-badge)](https://github.com/Stormsys/home-assistant-chores)
 
 Track household chores using your existing smart home sensors. Each chore follows a simple lifecycle — **inactive → pending → due → started → completed** — driven by real device events, not manual checklists.
 
@@ -29,7 +29,7 @@ Chores you can't auto-detect are completed manually via a button or service call
 ### HACS (Recommended)
 
 1. Open HACS → **Integrations** → three-dot menu → **Custom repositories**
-2. Add `https://github.com/your-repo/ha-chores` with category **Integration**
+2. Add `https://github.com/Stormsys/home-assistant-chores` with category **Integration**
 3. Find **Chores** and click **Download**
 4. Restart Home Assistant
 
@@ -214,7 +214,7 @@ tap_action:
 
 ## Contributing
 
-Issues and pull requests welcome at [GitHub](https://github.com/your-repo/ha-chores/issues).
+Issues and pull requests welcome at [GitHub](https://github.com/Stormsys/home-assistant-chores/issues).
 
 ---
 
