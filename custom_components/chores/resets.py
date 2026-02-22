@@ -195,6 +195,61 @@ class ImplicitDailyReset(BaseReset):
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# ImplicitWeeklyReset
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class ImplicitWeeklyReset(BaseReset):
+    """Reset when the next weekly trigger schedule entry arrives.
+
+    Stays 'completed' until the next scheduled (day, time) from the weekly
+    trigger's schedule list.
+    """
+
+    reset_type = ResetType.IMPLICIT_WEEKLY
+
+    def __init__(self, schedule: list[tuple[int, time]]) -> None:
+        self._schedule = schedule
+
+    def _next_occurrence_after(self, after: datetime) -> datetime:
+        """Return the next scheduled (day, time) after *after*."""
+        local = dt_util.as_local(after)
+        best: datetime | None = None
+        for weekday, t in self._schedule:
+            candidate = local.replace(
+                hour=t.hour, minute=t.minute, second=0, microsecond=0,
+            )
+            # Adjust to the correct weekday
+            days_ahead = weekday - local.weekday()
+            if days_ahead < 0:
+                days_ahead += 7
+            candidate += timedelta(days=days_ahead)
+            # If same day but time already passed, move to next week
+            if candidate <= local:
+                candidate += timedelta(days=7)
+            if best is None or candidate < best:
+                best = candidate
+        # Should never be None since schedule is non-empty
+        if best is None:
+            return local + timedelta(days=1)
+        return best
+
+    def should_reset(self, completed_at: datetime) -> bool:
+        return dt_util.now() >= self._next_occurrence_after(completed_at)
+
+    def next_reset_at(self, completed_at: datetime) -> datetime | None:
+        return self._next_occurrence_after(completed_at)
+
+    def next_scheduled_reset(self) -> datetime | None:
+        return self._next_occurrence_after(dt_util.now())
+
+    def extra_attributes(self, completed_at: datetime | None) -> dict[str, Any]:
+        attrs = super().extra_attributes(completed_at)
+        attrs["schedule_entries"] = len(self._schedule)
+        return attrs
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # ImplicitEventReset
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -246,6 +301,21 @@ def create_reset(config: dict[str, Any] | None, trigger_type: TriggerType, trigg
         else:
             t = time_val
         return ImplicitDailyReset(trigger_time=t)
+
+    if trigger_type == TriggerType.WEEKLY:
+        from .triggers import WEEKDAY_MAP
+
+        schedule: list[tuple[int, time]] = []
+        for entry in trigger_config.get("schedule", []):
+            day_int = WEEKDAY_MAP[entry["day"]]
+            time_val = entry["time"]
+            if isinstance(time_val, str):
+                parts = time_val.split(":")
+                t = time(int(parts[0]), int(parts[1]))
+            else:
+                t = time_val
+            schedule.append((day_int, t))
+        return ImplicitWeeklyReset(schedule=schedule)
 
     # power_cycle, state_change -> immediate reset
     return ImplicitEventReset()

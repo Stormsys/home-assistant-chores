@@ -24,6 +24,18 @@ from .const import SubState, TriggerType
 
 _LOGGER = logging.getLogger(__name__)
 
+# ── Weekday helpers ──────────────────────────────────────────────────
+
+WEEKDAY_MAP: dict[str, int] = {
+    "mon": 0, "tue": 1, "wed": 2, "thu": 3,
+    "fri": 4, "sat": 5, "sun": 6,
+}
+
+WEEKDAY_SHORT_NAMES: dict[int, str] = {
+    0: "Mon", 1: "Tue", 2: "Wed", 3: "Thu",
+    4: "Fri", 5: "Sat", 6: "Sun",
+}
+
 
 class BaseTrigger(ABC):
     """Abstract base class for all trigger types."""
@@ -499,6 +511,200 @@ class DailyTrigger(BaseTrigger):
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# WeeklyTrigger
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class WeeklyTrigger(BaseTrigger):
+    """Trigger that fires at specific times on specific weekdays.
+
+    Each schedule entry pairs a weekday with a time. The trigger fires at the
+    configured time only on the matching weekday.
+
+    Without gate: scheduled time reached on matching day -> done immediately.
+    With gate: scheduled time reached -> active (pending), gate met -> done.
+    """
+
+    trigger_type = TriggerType.WEEKLY
+
+    def __init__(self, config: dict[str, Any]) -> None:
+        super().__init__(config)
+        # Parse schedule: list of (weekday_int, time) tuples
+        self._schedule: list[tuple[int, time]] = []
+        for entry in config["schedule"]:
+            day_int = WEEKDAY_MAP[entry["day"]]
+            time_val = entry["time"]
+            if isinstance(time_val, str):
+                parts = time_val.split(":")
+                t = time(int(parts[0]), int(parts[1]))
+            else:
+                t = time_val
+            self._schedule.append((day_int, t))
+
+        gate = config.get("gate")
+        self._gate_entity: str | None = gate.get("entity_id") if gate else None
+        self._gate_state: str | None = gate.get("state") if gate else None
+        self._has_gate: bool = self._gate_entity is not None
+        self._time_fired_today: bool = False
+
+    @property
+    def schedule(self) -> list[tuple[int, time]]:
+        """Return the configured schedule as (weekday, time) pairs."""
+        return self._schedule
+
+    @property
+    def has_gate(self) -> bool:
+        return self._has_gate
+
+    @property
+    def next_trigger_datetime(self) -> datetime:
+        """Calculate the next trigger datetime across all schedule entries."""
+        now = dt_util.now()
+        best: datetime | None = None
+        for weekday, t in self._schedule:
+            candidate = now.replace(
+                hour=t.hour, minute=t.minute, second=0, microsecond=0,
+            )
+            # Adjust to the correct weekday
+            days_ahead = weekday - now.weekday()
+            if days_ahead < 0:
+                days_ahead += 7
+            candidate += timedelta(days=days_ahead)
+            # If same day but time already passed, move to next week
+            if candidate <= now:
+                candidate += timedelta(days=7)
+            if best is None or candidate < best:
+                best = candidate
+        # Should never be None since schedule is non-empty, but guard anyway
+        if best is None:
+            return now + timedelta(days=1)
+        return best
+
+    def _todays_trigger_time(self, now: datetime) -> time | None:
+        """Return the scheduled trigger time for today, or None."""
+        current_day = now.weekday()
+        for weekday, t in self._schedule:
+            if weekday == current_day:
+                return t
+        return None
+
+    def _reset_internal(self) -> None:
+        self._time_fired_today = False
+
+    def async_setup_listeners(
+        self, hass: HomeAssistant, on_state_change: callback
+    ) -> None:
+        # Group schedule entries by time so we register one listener per unique time
+        times_to_days: dict[time, set[int]] = {}
+        for weekday, t in self._schedule:
+            times_to_days.setdefault(t, set()).add(weekday)
+
+        for trigger_time, valid_days in times_to_days.items():
+
+            @callback
+            def _handle_time(now: datetime, _days: set[int] = valid_days) -> None:
+                if self._state != SubState.IDLE:
+                    return
+                if now.weekday() not in _days:
+                    return
+                self._time_fired_today = True
+                if self._has_gate:
+                    if self._is_gate_met(hass):
+                        self.set_state(SubState.DONE)
+                    else:
+                        self.set_state(SubState.ACTIVE)
+                else:
+                    self.set_state(SubState.DONE)
+                on_state_change()
+
+            unsub_time = async_track_time_change(
+                hass, _handle_time,
+                hour=trigger_time.hour, minute=trigger_time.minute, second=0,
+            )
+            self._listeners.append(unsub_time)
+
+        # Gate entity listener (if configured)
+        if self._gate_entity:
+
+            @callback
+            def _handle_gate(event: Event) -> None:
+                if self._state != SubState.ACTIVE:
+                    return
+                new_state = event.data.get("new_state")
+                old_state = event.data.get("old_state")
+                if old_state is None or old_state.state in ("unavailable", "unknown"):
+                    return
+                if new_state and new_state.state == self._gate_state:
+                    self.set_state(SubState.DONE)
+                    on_state_change()
+
+            unsub_gate = async_track_state_change_event(
+                hass, [self._gate_entity], _handle_gate
+            )
+            self._listeners.append(unsub_gate)
+
+    def _is_gate_met(self, hass: HomeAssistant) -> bool:
+        """Check if the gate condition is currently met."""
+        if not self._gate_entity:
+            return True
+        state = hass.states.get(self._gate_entity)
+        return state is not None and state.state == self._gate_state
+
+    def evaluate(self, hass: HomeAssistant) -> SubState:
+        """Check if we've passed a scheduled trigger time today (handles startup)."""
+        if self._state == SubState.IDLE and not self._time_fired_today:
+            now = dt_util.now()
+            trigger_time = self._todays_trigger_time(now)
+            if trigger_time is not None:
+                today_trigger = now.replace(
+                    hour=trigger_time.hour,
+                    minute=trigger_time.minute,
+                    second=0,
+                    microsecond=0,
+                )
+                if now >= today_trigger:
+                    self._time_fired_today = True
+                    if self._has_gate:
+                        if self._is_gate_met(hass):
+                            self.set_state(SubState.DONE)
+                        else:
+                            self.set_state(SubState.ACTIVE)
+                    else:
+                        self.set_state(SubState.DONE)
+        return self._state
+
+    def extra_attributes(self, hass: HomeAssistant) -> dict[str, Any]:
+        attrs: dict[str, Any] = {
+            "trigger_type": self.trigger_type.value,
+            "state_entered_at": self._state_entered_at.isoformat(),
+            "schedule": [
+                {
+                    "day": WEEKDAY_SHORT_NAMES[weekday],
+                    "time": t.isoformat(),
+                }
+                for weekday, t in self._schedule
+            ],
+            "next_trigger": self.next_trigger_datetime.isoformat(),
+            "time_fired_today": self._time_fired_today,
+        }
+        if self._gate_entity:
+            state = hass.states.get(self._gate_entity)
+            attrs["gate_entity"] = self._gate_entity
+            attrs["gate_expected_state"] = self._gate_state
+            attrs["gate_current_state"] = state.state if state else None
+            attrs["gate_met"] = self._is_gate_met(hass)
+        return attrs
+
+    def _snapshot_internal(self) -> dict[str, Any]:
+        return {
+            "time_fired_today": self._time_fired_today,
+        }
+
+    def _restore_internal(self, data: dict[str, Any]) -> None:
+        self._time_fired_today = data.get("time_fired_today", False)
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # Factory
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -506,6 +712,7 @@ TRIGGER_FACTORY: dict[str, type[BaseTrigger]] = {
     TriggerType.POWER_CYCLE: PowerCycleTrigger,
     TriggerType.STATE_CHANGE: StateChangeTrigger,
     TriggerType.DAILY: DailyTrigger,
+    TriggerType.WEEKLY: WeeklyTrigger,
 }
 
 

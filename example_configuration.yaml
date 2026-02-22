@@ -144,6 +144,28 @@ chores:
           icon_done: mdi:home-check
 
     # ─────────────────────────────────────────────
+    # WEEKLY CHORE
+    # Fires on specific weekdays at different times, with a gate
+    # ─────────────────────────────────────────────
+    - id: weekly_clean
+      name: "Weekly Clean"
+      icon: mdi:broom
+
+      trigger:
+        type: weekly
+        schedule:
+          - day: wed
+            time: "17:00"
+          - day: fri
+            time: "18:00"
+        gate:
+          entity_id: binary_sensor.bedroom_door_contact
+          state: "on"
+
+      completion:
+        type: manual
+
+    # ─────────────────────────────────────────────
     # BINS
     # Triggered by helper (set by automation on bin night),
     # presence cycle (take bin out + come back) to complete

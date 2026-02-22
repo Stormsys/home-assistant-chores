@@ -42,7 +42,7 @@ from .const import (
     TriggerType,
 )
 from .coordinator import ChoresCoordinator
-from .triggers import DailyTrigger
+from .triggers import DailyTrigger, WeeklyTrigger, WEEKDAY_SHORT_NAMES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -187,6 +187,16 @@ class TriggerProgressSensor(CoordinatorEntity[ChoresCoordinator], SensorEntity):
             time_str = trigger.trigger_time.strftime("%H:%M")
             default_name = f"Daily at {time_str}"
             default_icon_idle = "mdi:calendar-clock"
+            default_icon_active = "mdi:calendar-alert"
+            default_icon_done = "mdi:calendar-check"
+        elif trigger.trigger_type == TriggerType.WEEKLY:
+            assert isinstance(trigger, WeeklyTrigger)
+            # Format as "Wed 17:00, Fri 18:00"
+            parts = []
+            for weekday, t in trigger.schedule:
+                parts.append(f"{WEEKDAY_SHORT_NAMES[weekday]} {t.strftime('%H:%M')}")
+            default_name = ", ".join(parts)
+            default_icon_idle = "mdi:calendar-week"
             default_icon_active = "mdi:calendar-alert"
             default_icon_done = "mdi:calendar-check"
         elif trigger.trigger_type == TriggerType.POWER_CYCLE:

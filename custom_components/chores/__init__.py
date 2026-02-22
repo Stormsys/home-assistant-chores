@@ -75,6 +75,28 @@ TRIGGER_SCHEMA = vol.Any(
             vol.Optional("sensor"): SENSOR_DISPLAY_SCHEMA,
         }
     ),
+    # weekly (specific days with per-day times)
+    vol.Schema(
+        {
+            vol.Required("type"): "weekly",
+            vol.Required("schedule"): vol.All(
+                cv.ensure_list,
+                [
+                    vol.Schema(
+                        {
+                            vol.Required("day"): vol.In(
+                                ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+                            ),
+                            vol.Required("time"): cv.string,
+                        }
+                    )
+                ],
+                vol.Length(min=1),
+            ),
+            vol.Optional("gate"): GATE_SCHEMA,
+            vol.Optional("sensor"): SENSOR_DISPLAY_SCHEMA,
+        }
+    ),
 )
 
 COMPLETION_SCHEMA = vol.Any(

@@ -40,6 +40,7 @@ class TriggerType(StrEnum):
     POWER_CYCLE = "power_cycle"
     STATE_CHANGE = "state_change"
     DAILY = "daily"
+    WEEKLY = "weekly"
 
 
 # ── Completion types ────────────────────────────────────────────────
@@ -60,6 +61,7 @@ class ResetType(StrEnum):
     DELAY = "delay"
     DAILY_RESET = "daily_reset"
     IMPLICIT_DAILY = "implicit_daily"
+    IMPLICIT_WEEKLY = "implicit_weekly"
     IMPLICIT_EVENT = "implicit_event"
 
 
