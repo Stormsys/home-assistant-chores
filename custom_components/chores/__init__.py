@@ -161,6 +161,8 @@ CHORE_SCHEMA = vol.Schema(
     {
         vol.Required("id"): cv.string,
         vol.Required("name"): cv.string,
+        vol.Optional("description"): cv.string,
+        vol.Optional("context"): cv.string,
         vol.Optional("icon", default="mdi:checkbox-marked-circle-outline"): cv.icon,
         vol.Optional("icon_inactive"): cv.icon,
         vol.Optional("icon_pending"): cv.icon,

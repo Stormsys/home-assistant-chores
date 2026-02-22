@@ -38,6 +38,8 @@ chores:
     # ─────────────────────────────────────────────
     - id: take_vitamins
       name: "Take Vitamins"
+      description: "Take daily multivitamin and omega-3 capsule from the coffee cupboard"
+      context: "Important for long-term health; best taken with food in the morning"
       icon: mdi:pill
 
       trigger:
@@ -149,6 +151,8 @@ chores:
     # ─────────────────────────────────────────────
     - id: weekly_clean
       name: "Weekly Clean"
+      description: "Vacuum all rooms and mop the kitchen floor"
+      context: "Focus on high-traffic areas; check under furniture"
       icon: mdi:broom
 
       trigger:

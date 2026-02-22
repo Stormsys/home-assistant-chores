@@ -21,6 +21,8 @@ from .const import (
     ATTR_COMPLETION_BUTTON,
     ATTR_COMPLETION_STATE,
     ATTR_COMPLETION_TYPE,
+    ATTR_CONTEXT,
+    ATTR_DESCRIPTION,
     ATTR_DUE_SINCE,
     ATTR_FORCED,
     ATTR_LAST_COMPLETED,
@@ -34,7 +36,7 @@ from .const import (
     SubState,
 )
 from .resets import BaseReset, create_reset
-from .triggers import BaseTrigger, DailyTrigger, create_trigger
+from .triggers import BaseTrigger, DailyTrigger, WeeklyTrigger, create_trigger
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,6 +50,8 @@ class Chore:
     def __init__(self, config: dict[str, Any]) -> None:
         self._id: str = config["id"]
         self._name: str = config["name"]
+        self._description: str | None = config.get("description")
+        self._context: str | None = config.get("context")
         self._icon: str = config.get("icon", "mdi:checkbox-marked-circle-outline")
 
         # Build components from config
@@ -154,8 +158,8 @@ class Chore:
 
     @property
     def next_due(self) -> datetime | None:
-        """Next predicted due time (daily triggers only)."""
-        if isinstance(self._trigger, DailyTrigger):
+        """Next predicted due time (daily/weekly triggers only)."""
+        if isinstance(self._trigger, (DailyTrigger, WeeklyTrigger)):
             return self._trigger.next_trigger_datetime
         return None
 
@@ -314,6 +318,8 @@ class Chore:
         """Return the full state dict for entities to consume."""
         result: dict[str, Any] = {
             ATTR_CHORE_ID: self._id,
+            ATTR_DESCRIPTION: self._description,
+            ATTR_CONTEXT: self._context,
             ATTR_CHORE_TYPE: self._trigger.trigger_type.value,
             ATTR_DUE_SINCE: self._due_since.isoformat() if self._due_since else None,
             ATTR_LAST_COMPLETED: self._last_completed.isoformat() if self._last_completed else None,

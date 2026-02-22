@@ -93,6 +93,8 @@ ATTR_PREVIOUS_STATE: Final = "previous_state"
 ATTR_NEW_STATE: Final = "new_state"
 ATTR_STATE_LABEL: Final = "state_label"
 ATTR_COMPLETION_BUTTON: Final = "completion_button"
+ATTR_DESCRIPTION: Final = "description"
+ATTR_CONTEXT: Final = "context"
 
 # ── Defaults ────────────────────────────────────────────────────────
 DEFAULT_ICON: Final = "mdi:checkbox-marked-circle-outline"
