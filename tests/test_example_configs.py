@@ -17,8 +17,10 @@ from conftest import (
     daily_manual_config,
     daily_presence_afternoon_config,
     daily_presence_config,
+    daily_sensor_threshold_config,
     duration_contact_cycle_config,
     power_cycle_config,
+    setup_listeners_capturing,
     state_change_presence_config,
     weekly_gate_manual_config,
 )
@@ -335,6 +337,56 @@ class TestTakeBinsOutLifecycle:
         chore = Chore(state_change_presence_config())
         assert chore.completion._away_state == "not_home"
         assert chore.completion._home_state == "home"
+
+
+class TestOpenWindowHumidityLifecycle:
+    """daily trigger + sensor_threshold completion + implicit_daily reset."""
+
+    @freeze_time("2025-06-15 08:01:00")
+    def test_full_lifecycle(self):
+        hass = MockHass()
+        chore = Chore(daily_sensor_threshold_config())
+        assert chore.state == ChoreState.INACTIVE
+
+        # 1. Trigger time reached → DUE
+        chore.evaluate(hass)
+        assert chore.state == ChoreState.DUE
+
+        # 2. Humidity drops below 60 → completion DONE → COMPLETED
+        chore.completion.set_state(SubState.DONE)
+        chore.evaluate(hass)
+        assert chore.state == ChoreState.COMPLETED
+
+        # 3. ImplicitDailyReset — stays COMPLETED (same day)
+        chore.evaluate(hass)
+        assert chore.state == ChoreState.COMPLETED
+
+    @freeze_time("2025-06-15 08:01:00")
+    def test_humidity_not_met_stays_due(self):
+        hass = MockHass()
+        chore = Chore(daily_sensor_threshold_config())
+        chore.evaluate(hass)
+        assert chore.state == ChoreState.DUE
+        # Humidity still above 60 — stays DUE
+        chore.evaluate(hass)
+        assert chore.state == ChoreState.DUE
+
+    @freeze_time("2025-06-15 08:01:00")
+    def test_preexisting_value_completes_on_enable(self):
+        """Sensor already below threshold when chore becomes due."""
+        hass = MockHass()
+        chore = Chore(daily_sensor_threshold_config())
+        # Set up listeners (patched) so the completion has access to hass
+        setup_listeners_capturing(hass, chore.completion)
+        hass.states.set("sensor.bathroom_humidity", "50.0")
+        # Trigger fires → DUE → enable() checks and completes
+        chore.evaluate(hass)
+        assert chore.state == ChoreState.DUE
+        # The enable() should have set completion to DONE
+        assert chore.completion.state == SubState.DONE
+        # Next evaluate picks it up
+        chore.evaluate(hass)
+        assert chore.state == ChoreState.COMPLETED
 
 
 # ── Cross-cutting lifecycle tests ────────────────────────────────────

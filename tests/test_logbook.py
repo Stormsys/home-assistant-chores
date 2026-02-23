@@ -141,6 +141,10 @@ class TestDescribeCompleted:
         msg = _describe_completed(forced=False, completion_type=CompletionType.SENSOR_STATE)
         assert "sensor" in msg.lower() or "triggered" in msg.lower() or "Completed" in msg
 
+    def test_sensor_threshold(self):
+        msg = _describe_completed(forced=False, completion_type=CompletionType.SENSOR_THRESHOLD)
+        assert "threshold" in msg.lower() or "sensor" in msg.lower() or "Completed" in msg
+
 
 # ── _describe_reset ──────────────────────────────────────────────────
 

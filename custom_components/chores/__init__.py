@@ -154,6 +154,18 @@ COMPLETION_SCHEMA = vol.Any(
             vol.Optional("sensor"): SENSOR_DISPLAY_SCHEMA,
         }
     ),
+    # sensor_threshold (fires when sensor value crosses a numeric threshold)
+    vol.Schema(
+        {
+            vol.Required("type"): "sensor_threshold",
+            vol.Required("entity_id"): cv.entity_id,
+            vol.Required("threshold"): vol.Coerce(float),
+            vol.Optional("operator", default="above"): vol.In(
+                ["above", "below", "equal"]
+            ),
+            vol.Optional("sensor"): SENSOR_DISPLAY_SCHEMA,
+        }
+    ),
 )
 
 RESET_SCHEMA = vol.Any(

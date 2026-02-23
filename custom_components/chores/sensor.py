@@ -297,6 +297,11 @@ class CompletionProgressSensor(CoordinatorEntity[ChoresCoordinator], SensorEntit
             default_icon_idle = "mdi:eye-off-outline"
             default_icon_active = "mdi:eye"
             default_icon_done = "mdi:check-circle"
+        elif completion.completion_type == CompletionType.SENSOR_THRESHOLD:
+            default_name = "Sensor Threshold"
+            default_icon_idle = "mdi:gauge-empty"
+            default_icon_active = "mdi:gauge"
+            default_icon_done = "mdi:gauge-full"
         else:
             default_name = "Completion"
             default_icon_idle = "mdi:checkbox-blank-outline"

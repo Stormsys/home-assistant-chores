@@ -22,6 +22,7 @@ from conftest import (
     daily_manual_config,
     daily_gate_contact_config,
     daily_presence_config,
+    daily_sensor_threshold_config,
     weekly_gate_manual_config,
     power_cycle_config,
     state_change_presence_config,
@@ -229,6 +230,17 @@ class TestCompletionProgressSensor:
         assert sensor._icon_idle == "mdi:home"
         assert sensor._icon_active == "mdi:home-export-outline"
         assert sensor._icon_done == "mdi:home-import-outline"
+
+    def test_sensor_threshold_defaults(self):
+        chore = Chore(daily_sensor_threshold_config())
+        coord = _make_coordinator_mock(chore)
+        entry = _make_entry_mock()
+        sensor = CompletionProgressSensor(coord, chore, entry)
+
+        assert sensor._attr_name == "Sensor Threshold"
+        assert sensor._icon_idle == "mdi:gauge-empty"
+        assert sensor._icon_active == "mdi:gauge"
+        assert sensor._icon_done == "mdi:gauge-full"
 
     def test_not_created_for_manual(self):
         """Manual completion chores should not have CompletionProgressSensor."""

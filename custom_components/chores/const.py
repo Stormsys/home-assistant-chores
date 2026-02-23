@@ -53,6 +53,7 @@ class CompletionType(StrEnum):
     CONTACT = "contact"
     CONTACT_CYCLE = "contact_cycle"
     PRESENCE_CYCLE = "presence_cycle"
+    SENSOR_THRESHOLD = "sensor_threshold"
 
 
 # ── Reset types ─────────────────────────────────────────────────────

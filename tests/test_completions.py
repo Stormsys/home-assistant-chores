@@ -1,4 +1,4 @@
-"""Tests for completions.py — all 5 completion types + factory."""
+"""Tests for completions.py — all 6 completion types + factory."""
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -14,6 +14,7 @@ from custom_components.chores.completions import (
     ManualCompletion,
     PresenceCycleCompletion,
     SensorStateCompletion,
+    SensorThresholdCompletion,
     create_completion,
 )
 
@@ -291,6 +292,15 @@ class TestCreateCompletionFactory:
     def test_presence_cycle(self):
         c = create_completion({"type": "presence_cycle", "entity_id": "person.x"})
         assert isinstance(c, PresenceCycleCompletion)
+
+    def test_sensor_threshold(self):
+        c = create_completion({
+            "type": "sensor_threshold",
+            "entity_id": "sensor.temp",
+            "threshold": 30.0,
+            "operator": "above",
+        })
+        assert isinstance(c, SensorThresholdCompletion)
 
     def test_default_is_manual(self):
         c = create_completion({})
@@ -593,3 +603,251 @@ class TestSensorStateCompletionEdgeCases:
         listener_cb(event)
         assert comp.state == SubState.DONE
         on_change.assert_not_called()
+
+
+# ── SensorThresholdCompletion ──────────────────────────────────────────
+
+
+class TestSensorThresholdCompletion:
+    def _make(self, operator="above", threshold=30.0):
+        return SensorThresholdCompletion({
+            "type": "sensor_threshold",
+            "entity_id": "sensor.temperature",
+            "threshold": threshold,
+            "operator": operator,
+        })
+
+    def test_type(self):
+        c = self._make()
+        assert c.completion_type == CompletionType.SENSOR_THRESHOLD
+
+    def test_steps_total(self):
+        c = self._make()
+        assert c.steps_total == 1
+
+    def test_default_operator_is_above(self):
+        c = SensorThresholdCompletion({
+            "type": "sensor_threshold",
+            "entity_id": "sensor.x",
+            "threshold": 10,
+        })
+        assert c._operator == "above"
+
+    def test_extra_attributes(self):
+        hass = MockHass()
+        hass.states.set("sensor.temperature", "25.0")
+        c = self._make(operator="above", threshold=30.0)
+        attrs = c.extra_attributes(hass)
+        assert attrs["completion_type"] == "sensor_threshold"
+        assert attrs["watched_entity"] == "sensor.temperature"
+        assert attrs["threshold"] == 30.0
+        assert attrs["operator"] == "above"
+        assert attrs["current_value"] == 25.0
+        assert attrs["steps_total"] == 1
+        assert attrs["steps_done"] == 0
+
+    def test_extra_attributes_unavailable(self):
+        hass = MockHass()
+        hass.states.set("sensor.temperature", "unavailable")
+        c = self._make()
+        attrs = c.extra_attributes(hass)
+        assert attrs["current_value"] is None
+
+    def test_extra_attributes_non_numeric(self):
+        hass = MockHass()
+        hass.states.set("sensor.temperature", "foobar")
+        c = self._make()
+        attrs = c.extra_attributes(hass)
+        assert attrs["current_value"] == "foobar"
+
+    def test_extra_attributes_entity_not_found(self):
+        hass = MockHass()
+        c = self._make()
+        attrs = c.extra_attributes(hass)
+        assert attrs["current_value"] is None
+
+    def test_snapshot_restore(self):
+        c = self._make()
+        c.enable()
+        c.set_state(SubState.DONE)
+        snap = c.snapshot_state()
+        assert snap["state"] == "done"
+        c2 = self._make()
+        c2.restore_state(snap)
+        assert c2.state == SubState.DONE
+        assert c2.enabled is True
+
+
+# ── SensorThresholdCompletion listener tests ───────────────────────────
+
+
+class TestSensorThresholdCompletionListener:
+    def _make(self, operator="above", threshold=30.0):
+        return SensorThresholdCompletion({
+            "type": "sensor_threshold",
+            "entity_id": "sensor.temperature",
+            "threshold": threshold,
+            "operator": operator,
+        })
+
+    def test_listener_fires_on_threshold_crossed(self):
+        comp = self._make(operator="above", threshold=30.0)
+        comp.enable()
+        hass = MockHass()
+        state_cbs, _, on_change = setup_listeners_capturing(hass, comp)
+        listener_cb = state_cbs[0]
+
+        event = make_state_change_event("sensor.temperature", "35.0", "25.0")
+        listener_cb(event)
+        assert comp.state == SubState.DONE
+        on_change.assert_called_once()
+
+    def test_listener_ignores_below_threshold(self):
+        comp = self._make(operator="above", threshold=30.0)
+        comp.enable()
+        hass = MockHass()
+        state_cbs, _, on_change = setup_listeners_capturing(hass, comp)
+        listener_cb = state_cbs[0]
+
+        event = make_state_change_event("sensor.temperature", "25.0", "20.0")
+        listener_cb(event)
+        assert comp.state == SubState.IDLE
+        on_change.assert_not_called()
+
+    def test_listener_ignores_unavailable(self):
+        comp = self._make()
+        comp.enable()
+        hass = MockHass()
+        state_cbs, _, on_change = setup_listeners_capturing(hass, comp)
+        listener_cb = state_cbs[0]
+
+        event = make_state_change_event("sensor.temperature", "unavailable", "25.0")
+        listener_cb(event)
+        assert comp.state == SubState.IDLE
+
+    def test_listener_ignores_non_numeric(self):
+        comp = self._make()
+        comp.enable()
+        hass = MockHass()
+        state_cbs, _, on_change = setup_listeners_capturing(hass, comp)
+        listener_cb = state_cbs[0]
+
+        event = make_state_change_event("sensor.temperature", "not_a_number", "25.0")
+        listener_cb(event)
+        assert comp.state == SubState.IDLE
+
+    def test_listener_ignores_when_disabled(self):
+        comp = self._make()
+        # NOT enabled
+        hass = MockHass()
+        state_cbs, _, on_change = setup_listeners_capturing(hass, comp)
+        listener_cb = state_cbs[0]
+
+        event = make_state_change_event("sensor.temperature", "35.0", "25.0")
+        listener_cb(event)
+        assert comp.state == SubState.IDLE
+        on_change.assert_not_called()
+
+    def test_listener_ignores_when_already_done(self):
+        comp = self._make()
+        comp.enable()
+        comp.set_state(SubState.DONE)
+        hass = MockHass()
+        state_cbs, _, on_change = setup_listeners_capturing(hass, comp)
+        listener_cb = state_cbs[0]
+
+        event = make_state_change_event("sensor.temperature", "40.0", "35.0")
+        listener_cb(event)
+        assert comp.state == SubState.DONE
+        on_change.assert_not_called()
+
+    def test_below_operator(self):
+        comp = self._make(operator="below", threshold=5.0)
+        comp.enable()
+        hass = MockHass()
+        state_cbs, _, on_change = setup_listeners_capturing(hass, comp)
+        listener_cb = state_cbs[0]
+
+        event = make_state_change_event("sensor.temperature", "3.0", "6.0")
+        listener_cb(event)
+        assert comp.state == SubState.DONE
+        on_change.assert_called_once()
+
+    def test_equal_operator(self):
+        comp = self._make(operator="equal", threshold=22.0)
+        comp.enable()
+        hass = MockHass()
+        state_cbs, _, on_change = setup_listeners_capturing(hass, comp)
+        listener_cb = state_cbs[0]
+
+        event = make_state_change_event("sensor.temperature", "22.0", "21.0")
+        listener_cb(event)
+        assert comp.state == SubState.DONE
+        on_change.assert_called_once()
+
+
+# ── SensorThresholdCompletion enable (pre-existing value) tests ────────
+
+
+class TestSensorThresholdCompletionEnable:
+    def _make(self, operator="above", threshold=30.0):
+        return SensorThresholdCompletion({
+            "type": "sensor_threshold",
+            "entity_id": "sensor.temperature",
+            "threshold": threshold,
+            "operator": operator,
+        })
+
+    def test_enable_fires_when_preexisting_value_above(self):
+        """When enabled, immediately checks current value and fires if met."""
+        comp = self._make(operator="above", threshold=30.0)
+        hass = MockHass()
+        hass.states.set("sensor.temperature", "35.0")
+        state_cbs, _, on_change = setup_listeners_capturing(hass, comp)
+
+        comp.enable()
+        assert comp.state == SubState.DONE
+        on_change.assert_called_once()
+
+    def test_enable_does_not_fire_when_below(self):
+        comp = self._make(operator="above", threshold=30.0)
+        hass = MockHass()
+        hass.states.set("sensor.temperature", "25.0")
+        state_cbs, _, on_change = setup_listeners_capturing(hass, comp)
+
+        comp.enable()
+        assert comp.state == SubState.IDLE
+        on_change.assert_not_called()
+
+    def test_enable_handles_unavailable(self):
+        comp = self._make()
+        hass = MockHass()
+        hass.states.set("sensor.temperature", "unavailable")
+        state_cbs, _, on_change = setup_listeners_capturing(hass, comp)
+
+        comp.enable()
+        assert comp.state == SubState.IDLE
+
+    def test_enable_handles_no_entity(self):
+        comp = self._make()
+        hass = MockHass()
+        state_cbs, _, on_change = setup_listeners_capturing(hass, comp)
+
+        comp.enable()
+        assert comp.state == SubState.IDLE
+
+    def test_enable_handles_non_numeric(self):
+        comp = self._make()
+        hass = MockHass()
+        hass.states.set("sensor.temperature", "foobar")
+        state_cbs, _, on_change = setup_listeners_capturing(hass, comp)
+
+        comp.enable()
+        assert comp.state == SubState.IDLE
+
+    def test_enable_without_listeners_setup(self):
+        """Enable before listeners are set up — no crash, no check."""
+        comp = self._make()
+        comp.enable()
+        assert comp.state == SubState.IDLE
+        assert comp.enabled is True

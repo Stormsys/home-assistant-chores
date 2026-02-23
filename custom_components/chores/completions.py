@@ -469,6 +469,112 @@ class PresenceCycleCompletion(BaseCompletion):
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# SensorThresholdCompletion
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class SensorThresholdCompletion(BaseCompletion):
+    """Completion when a sensor value crosses a numeric threshold.
+
+    Single-step: idle -> done.
+    Supports ``above``, ``below``, and ``equal`` operators.
+
+    Reacts to state-change events and also checks the pre-existing
+    sensor value when the completion is enabled (chore becomes due).
+    """
+
+    completion_type = CompletionType.SENSOR_THRESHOLD
+    steps_total = 1
+
+    def __init__(self, config: dict[str, Any]) -> None:
+        super().__init__(config)
+        self._entity_id: str = config["entity_id"]
+        self._threshold: float = float(config["threshold"])
+        self._operator: str = config.get("operator", "above")
+        # Stored during listener setup so enable() can do an initial check.
+        self._hass: HomeAssistant | None = None
+        self._on_state_change: callback | None = None
+
+    def _check_threshold(self, value: float) -> bool:
+        """Return True when *value* satisfies the configured condition."""
+        if self._operator == "above":
+            return value > self._threshold
+        if self._operator == "below":
+            return value < self._threshold
+        # equal
+        return value == self._threshold
+
+    def _reset_internal(self) -> None:
+        pass
+
+    def enable(self) -> None:
+        """Enable and immediately check if the threshold is already met."""
+        super().enable()
+        if self._hass is not None:
+            state = self._hass.states.get(self._entity_id)
+            if state and state.state not in ("unknown", "unavailable"):
+                try:
+                    value = float(state.state)
+                except (ValueError, TypeError):
+                    return
+                if self._check_threshold(value) and self._state != SubState.DONE:
+                    self.set_state(SubState.DONE)
+                    if self._on_state_change:
+                        self._on_state_change()
+
+    def async_setup_listeners(
+        self, hass: HomeAssistant, on_state_change: callback
+    ) -> None:
+        self._hass = hass
+        self._on_state_change = on_state_change
+
+        @callback
+        def _handle_state_change(event: Event) -> None:
+            if not self._enabled:
+                return
+            new_state = event.data.get("new_state")
+            if not new_state or new_state.state in ("unknown", "unavailable"):
+                return
+            try:
+                value = float(new_state.state)
+            except (ValueError, TypeError):
+                return
+            if self._check_threshold(value) and self._state != SubState.DONE:
+                self.set_state(SubState.DONE)
+                on_state_change()
+
+        unsub = async_track_state_change_event(
+            hass, [self._entity_id], _handle_state_change
+        )
+        self._listeners.append(unsub)
+
+    def extra_attributes(self, hass: HomeAssistant) -> dict[str, Any]:
+        state = hass.states.get(self._entity_id)
+        current_value: float | str | None = None
+        if state and state.state not in ("unknown", "unavailable"):
+            try:
+                current_value = float(state.state)
+            except (ValueError, TypeError):
+                current_value = state.state
+        return {
+            "completion_type": self.completion_type.value,
+            "state_entered_at": self._state_entered_at.isoformat(),
+            "watched_entity": self._entity_id,
+            "current_value": current_value,
+            "threshold": self._threshold,
+            "operator": self._operator,
+            "steps_total": self.steps_total,
+            "steps_done": self._steps_done,
+        }
+
+    def _snapshot_internal(self) -> dict[str, Any]:
+        return {}
+
+    def _restore_internal(self, data: dict[str, Any]) -> None:
+        pass
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # Factory
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -478,6 +584,7 @@ COMPLETION_FACTORY: dict[str, type[BaseCompletion]] = {
     CompletionType.CONTACT: ContactCompletion,
     CompletionType.CONTACT_CYCLE: ContactCycleCompletion,
     CompletionType.PRESENCE_CYCLE: PresenceCycleCompletion,
+    CompletionType.SENSOR_THRESHOLD: SensorThresholdCompletion,
 }
 
 

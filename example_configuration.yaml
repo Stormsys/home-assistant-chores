@@ -220,3 +220,21 @@ chores:
           icon_idle: mdi:home
           icon_active: mdi:walk
           icon_done: mdi:home-check
+
+    # ─────────────────────────────────────────────
+    # OPEN WINDOW (humidity)
+    # Triggered daily at 08:00, completed when humidity drops below 60%
+    # ─────────────────────────────────────────────
+    - id: open_window_humidity
+      name: "Open Window"
+      icon: mdi:window-open
+
+      trigger:
+        type: daily
+        time: "08:00"
+
+      completion:
+        type: sensor_threshold
+        entity_id: sensor.bathroom_humidity
+        threshold: 60
+        operator: below

@@ -554,6 +554,25 @@ def state_change_presence_config() -> dict[str, Any]:
     }
 
 
+def daily_sensor_threshold_config() -> dict[str, Any]:
+    """Open Window — daily trigger + sensor_threshold completion + implicit_daily reset."""
+    return {
+        "id": "open_window_humidity",
+        "name": "Open Window",
+        "icon": "mdi:window-open",
+        "trigger": {
+            "type": "daily",
+            "time": "08:00",
+        },
+        "completion": {
+            "type": "sensor_threshold",
+            "entity_id": "sensor.bathroom_humidity",
+            "threshold": 60,
+            "operator": "below",
+        },
+    }
+
+
 ALL_EXAMPLE_CONFIGS = [
     power_cycle_config,
     daily_gate_contact_config,
@@ -564,4 +583,5 @@ ALL_EXAMPLE_CONFIGS = [
     weekly_gate_manual_config,
     duration_contact_cycle_config,
     state_change_presence_config,
+    daily_sensor_threshold_config,
 ]

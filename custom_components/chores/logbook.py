@@ -103,6 +103,8 @@ def _describe_completed(forced: bool, completion_type: str | None) -> str:
         return "Completed — returned home"
     if completion_type == CompletionType.SENSOR_STATE:
         return "Completed — sensor triggered"
+    if completion_type == CompletionType.SENSOR_THRESHOLD:
+        return "Completed — sensor threshold crossed"
     return "Completed"
 
 

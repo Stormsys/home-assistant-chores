@@ -10,6 +10,7 @@ from conftest import (
     daily_manual_config,
     daily_presence_afternoon_config,
     daily_presence_config,
+    daily_sensor_threshold_config,
     duration_contact_cycle_config,
     power_cycle_config,
     state_change_presence_config,
@@ -41,6 +42,7 @@ class TestExampleConfigsValidate:
         weekly_gate_manual_config,
         duration_contact_cycle_config,
         state_change_presence_config,
+        daily_sensor_threshold_config,
     ])
     def test_validates(self, config_fn):
         config = config_fn()
@@ -187,6 +189,34 @@ class TestCompletionSchema:
             "entity_id": "person.alice",
         })
         assert result["entity_id"] == "person.alice"
+
+    def test_sensor_threshold(self):
+        result = COMPLETION_SCHEMA({
+            "type": "sensor_threshold",
+            "entity_id": "sensor.temperature",
+            "threshold": 30,
+        })
+        assert result["threshold"] == 30.0
+        assert result["operator"] == "above"  # default
+
+    def test_sensor_threshold_below(self):
+        result = COMPLETION_SCHEMA({
+            "type": "sensor_threshold",
+            "entity_id": "sensor.temperature",
+            "threshold": 5.0,
+            "operator": "below",
+        })
+        assert result["operator"] == "below"
+
+    def test_sensor_threshold_invalid_operator_rejected(self):
+        config = {
+            "type": "sensor_threshold",
+            "entity_id": "sensor.temperature",
+            "threshold": 30,
+            "operator": "invalid",
+        }
+        with pytest.raises(vol.Invalid):
+            COMPLETION_SCHEMA(config)
 
 
 # ── RESET_SCHEMA ─────────────────────────────────────────────────────

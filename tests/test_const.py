@@ -66,11 +66,11 @@ class TestTriggerType:
 
 
 class TestCompletionType:
-    def test_has_five_types(self):
-        assert len(CompletionType) == 5
+    def test_has_six_types(self):
+        assert len(CompletionType) == 6
 
     def test_values(self):
-        expected = {"manual", "sensor_state", "contact", "contact_cycle", "presence_cycle"}
+        expected = {"manual", "sensor_state", "contact", "contact_cycle", "presence_cycle", "sensor_threshold"}
         assert {t.value for t in CompletionType} == expected
 
 
