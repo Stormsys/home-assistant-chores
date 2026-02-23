@@ -41,6 +41,11 @@ def _ensure_stub(name: str, attrs: dict[str, Any] | None = None) -> types.Module
 # atomicwrites (needed for homeassistant.util.file)
 _ensure_stub("atomicwrites", {"AtomicWriter": type("AtomicWriter", (), {})})
 
+# aiozoneinfo (needed by homeassistant.util.dt in newer HA versions)
+_ensure_stub("aiozoneinfo", {
+    "async_get_time_zone": lambda tz_name: None,
+})
+
 # homeassistant.helpers.template — imported by helpers.event; pulls in jinja2,
 # lru-dict, and other heavy deps we don't need.  Stub before importing event.
 # Template may be a package (newer HA) or a single module (older HA), so we

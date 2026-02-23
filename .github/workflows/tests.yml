@@ -25,7 +25,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pytest pytest-asyncio freezegun voluptuous
-          pip install --no-deps homeassistant
+          pip install --no-deps 'homeassistant>=2024.1.0,<2027.0'
 
           # Install the subset of HA runtime deps the test suite needs.
           # Heavy deps (cryptography, jwt, etc.) are stubbed in conftest.py.
