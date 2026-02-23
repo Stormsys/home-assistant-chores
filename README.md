@@ -65,36 +65,50 @@ For a complete multi-chore example, see [`example_configuration.yaml`](example_c
 
 ## Triggers, Completions, and Resets
 
-Every chore is built from three components:
+Every chore is built from three pluggable components. Most detector types work in **either** trigger or completion position — mix and match to fit your use case.
 
-| Component | Purpose | Types |
-|-----------|---------|-------|
-| **Trigger** | What makes the chore due | `daily`, `weekly`, `power_cycle`, `state_change`, `duration`, + cross-stage types |
-| **Completion** | How the chore gets marked done | `manual`, `contact`, `contact_cycle`, `presence_cycle`, `sensor_state`, `sensor_threshold`, + cross-stage types |
-| **Reset** | When it goes back to inactive | `delay`, `daily_reset` (or auto-selected defaults) |
+### Triggers
 
-**Triggers** at a glance:
+Triggers define **what makes the chore due**. All triggers support an optional `gate` to hold the chore in `pending` until a secondary condition is met.
 
-| Type | Use case |
-|------|----------|
-| `daily` | Fixed time each day, with optional gate (e.g. "after 6am, but only once I'm out of bed") |
-| `weekly` | Specific days and times (e.g. "Wed 17:00 and Fri 18:00"), with optional gate |
-| `power_cycle` | Smart plug detects an appliance finishing a cycle |
-| `state_change` | Any entity transitions between two states |
-| `duration` | Entity stays in a target state for N hours (e.g. clothes on drying rack for 48h) |
+| Type | Use case | Gate support |
+|------|----------|:---:|
+| `daily` | Fixed time each day (e.g. "6am, but only after I'm out of bed") | Yes |
+| `weekly` | Specific days and times (e.g. "Wed 21:00 and Fri 21:30") | Yes |
+| `power_cycle` | Smart plug detects an appliance finishing a cycle | Yes |
+| `state_change` | Any entity transitions between two states | Yes |
+| `duration` | Entity stays in a target state for N hours (e.g. drying rack out for 48h) | Yes |
+| `sensor_state` | Entity enters a target state | Yes |
+| `contact` | Contact sensor opens | Yes |
+| `contact_cycle` | Contact opens then closes | Yes |
+| `presence_cycle` | Person/tracker leaves then returns | Yes |
+| `sensor_threshold` | Numeric sensor crosses a threshold | Yes |
 
-**Completions** at a glance:
+### Completions
+
+Completions define **how the chore gets marked done**. Only active while the chore is `due` or `started`. All types (except `manual`) support an optional `gate`.
 
 | Type | Steps | Use case |
-|------|-------|----------|
+|------|:-----:|----------|
 | `manual` | — | Button press or service call only |
-| `contact` | 1 | Contact sensor opens (door, drawer) |
+| `contact` | 1 | Contact sensor opens (machine door, drawer) |
 | `contact_cycle` | 2 | Contact opens *then* closes (pill box, cupboard) |
 | `presence_cycle` | 2 | Person leaves *then* returns home (walks, errands) |
 | `sensor_state` | 1 | Any entity enters a target state |
 | `sensor_threshold` | 1 | Numeric sensor crosses a threshold (above/below/equal) |
+| `power_cycle` | 2 | Appliance finishes a power cycle |
+| `state_change` | 1 | Entity transitions between two states |
+| `duration` | 2 | Entity stays in target state for N hours |
 
-**Cross-stage types:** Most detector types can be used in either trigger or completion position. For example, `sensor_state` can be a trigger (chore becomes due when sensor enters target state) or a completion (chore is completed when sensor enters target state). See the [Configuration Reference](docs/configuration.md) for details.
+### Resets
+
+Resets control **when a completed chore goes back to inactive**. If omitted, a sensible default is chosen based on the trigger type.
+
+| Type | Use case |
+|------|----------|
+| `delay` | Fixed delay after completion (0 = immediate) |
+| `daily_reset` | Reset at a specific time each day |
+| *(auto)* | `daily`/`weekly` triggers reset at next occurrence; event-based triggers reset immediately |
 
 Full YAML reference with all parameters: **[Configuration Reference](docs/configuration.md)**
 
@@ -124,15 +138,17 @@ Each chore gets its own device with these entities:
 
 | Entity | Type | Description |
 |--------|------|-------------|
-| `sensor.<chore_id>` | Sensor | Primary state: inactive, pending, due, started, completed |
-| `sensor.<chore_id>_trigger` | Sensor | Trigger progress: idle, active, done |
-| `sensor.<chore_id>_completion` | Sensor | Completion progress: idle, active, done |
-| `sensor.<chore_id>_reset` | Sensor | Reset status: idle, waiting |
+| `sensor.<chore_id>_chore` | Sensor | Primary state: inactive, pending, due, started, completed |
+| `sensor.<chore_id>_trigger_detector` | Sensor | Trigger progress: idle, active, done |
+| `sensor.<chore_id>_completion_detector` | Sensor | Completion progress: idle, active, done |
+| `sensor.<chore_id>_reset_detector` | Sensor | Reset status: idle, waiting |
 | `sensor.<chore_id>_last_completed` | Sensor | Timestamp of last completion (diagnostic) |
 | `binary_sensor.<chore_id>_needs_attention` | Binary Sensor | `on` when chore is due or started |
 | `button.<chore_id>_force_due` | Button | Force into due state |
 | `button.<chore_id>_force_complete` | Button | Force into completed state |
 | `button.<chore_id>_force_inactive` | Button | Force into inactive state |
+
+Entity names use the `has_entity_name` pattern — HA combines the device name (chore name) with the entity name. For example, a chore named "Unload Washing Machine" produces `sensor.unload_washing_machine_chore`.
 
 ---
 
