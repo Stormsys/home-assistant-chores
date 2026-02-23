@@ -17,11 +17,11 @@ chores:
       icon: mdi:some-icon          # optional
 
       trigger:                     # required — what makes this chore due
-        type: daily | power_cycle | state_change
+        type: daily | weekly | power_cycle | state_change | duration | ...
         # ... type-specific options (see below)
 
       completion:                  # optional, default: manual
-        type: manual | contact | contact_cycle | presence_cycle | sensor_state
+        type: manual | contact | contact_cycle | presence_cycle | sensor_state | sensor_threshold | ...
         # ... type-specific options (see below)
 
       reset:                       # optional — smart defaults per trigger type
@@ -137,6 +137,61 @@ Useful for helper booleans set by other automations (e.g. a calendar automation 
 
 ---
 
+### `weekly` — Specific Days and Times
+
+The chore becomes due on specific weekdays at per-day times. Supports an optional gate.
+
+```yaml
+trigger:
+  type: weekly
+  schedule:
+    - day: wed
+      time: "17:00"
+    - day: fri
+      time: "18:00"
+  gate:                  # optional
+    entity_id: binary_sensor.home_occupied
+    state: "on"
+```
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `schedule` | Yes | — | List of `{day, time}` entries. Days: mon, tue, wed, thu, fri, sat, sun |
+| `gate.entity_id` | No | — | Entity that must match `gate.state` before the chore fires |
+| `gate.state` | No | — | Required state of the gate entity |
+
+---
+
+### `duration` — Entity Stays in State for N Hours
+
+Fires when an entity remains in a target state for a specified duration. Timer survives HA restarts and ignores transient `unavailable`/`unknown` states.
+
+```yaml
+trigger:
+  type: duration
+  entity_id: binary_sensor.clothes_rack_contact
+  state: "on"
+  duration_hours: 48
+  gate:                  # optional
+    entity_id: binary_sensor.laundry_room_occupied
+    state: "off"
+  sensor:
+    name: "Rack Timer"
+    icon_idle: mdi:timer-off-outline
+    icon_active: mdi:timer-sand
+    icon_done: mdi:timer-check-outline
+```
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `entity_id` | Yes | — | Entity to watch |
+| `state` | No | `"on"` | Target state to monitor |
+| `duration_hours` | Yes | — | Hours the entity must stay in target state (positive, float allowed) |
+| `gate.entity_id` | No | — | Entity that must match `gate.state` before the chore fires |
+| `gate.state` | No | — | Required state of the gate entity |
+
+---
+
 ## Completion Types
 
 Completions define how a chore is marked done once it is `due`. Completions are only active while the chore is in `due` or `pending` state.
@@ -220,6 +275,68 @@ Supports `person.*`, `device_tracker.*`, and `binary_sensor.*` entities.
 
 ---
 
+### `sensor_threshold` — Numeric Threshold
+
+Done when a numeric sensor value crosses a threshold. Supports `above`, `below`, and `equal` operators. The condition is checked immediately when the chore becomes due (in case it's already met), and continuously via state change listeners.
+
+```yaml
+completion:
+  type: sensor_threshold
+  entity_id: sensor.room_temperature
+  threshold: 25.0
+  operator: above     # above | below | equal
+```
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `entity_id` | Yes | — | Numeric sensor entity |
+| `threshold` | Yes | — | Numeric threshold value |
+| `operator` | No | `"above"` | Comparison operator: `above`, `below`, or `equal` |
+
+---
+
+### Gate Support on Completions
+
+All completion types (except `manual`) support an optional `gate` block, just like triggers. The gate holds the completion in `ACTIVE` state until the gate condition is met:
+
+```yaml
+completion:
+  type: contact
+  entity_id: binary_sensor.washing_machine_door
+  gate:
+    entity_id: binary_sensor.laundry_room_occupied
+    state: "on"
+```
+
+---
+
+### Cross-Stage Types
+
+Most detector types can be used in either trigger or completion position. This allows flexible chore configurations:
+
+```yaml
+# Use sensor_state as a trigger
+trigger:
+  type: sensor_state
+  entity_id: sensor.humidity
+  state: "high"
+
+# Use power_cycle as a completion
+completion:
+  type: power_cycle
+  power_sensor: sensor.dryer_power
+  cooldown_minutes: 3
+```
+
+| Detector Type | As Trigger | As Completion |
+|---------------|------------|---------------|
+| `daily` | Yes | No |
+| `weekly` | Yes | No |
+| `manual` | No | Yes |
+| All others | Yes | Yes |
+
+---
+
 ## Reset Types
 
 Resets control when a completed chore returns to `inactive`, ready for the next cycle.
@@ -247,8 +364,11 @@ reset:
 | Trigger type | Default reset |
 |---|---|
 | `daily` | Resets at the next occurrence of the trigger time |
-| `power_cycle` | Resets shortly after completion |
-| `state_change` | Resets shortly after completion |
+| `weekly` | Resets at the next occurrence of the weekly schedule |
+| `power_cycle` | Immediate reset (event-based) |
+| `state_change` | Immediate reset (event-based) |
+| `duration` | Immediate reset (event-based) |
+| All others | Immediate reset (event-based) |
 
 ---
 

@@ -10,6 +10,7 @@ Creates:
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -42,9 +43,65 @@ from .const import (
     TriggerType,
 )
 from .coordinator import ChoresCoordinator
-from .triggers import DailyTrigger, DurationTrigger, WeeklyTrigger, WEEKDAY_SHORT_NAMES
-
 _LOGGER = logging.getLogger(__name__)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Detector sensor defaults registry
+# ═══════════════════════════════════════════════════════════════════════
+
+
+@dataclass(frozen=True)
+class DetectorSensorDefaults:
+    """Default name and icons for a detector progress sensor."""
+
+    name: str | None  # None means dynamic (computed from detector config)
+    icon_idle: str
+    icon_active: str
+    icon_done: str
+
+
+DETECTOR_SENSOR_DEFAULTS: dict[str, DetectorSensorDefaults] = {
+    # Trigger-primary detectors
+    "power_cycle": DetectorSensorDefaults(
+        "Power Monitor", "mdi:power-plug-off", "mdi:power-plug", "mdi:power-plug-outline",
+    ),
+    "state_change": DetectorSensorDefaults(
+        "State Monitor", "mdi:toggle-switch-off-outline", "mdi:toggle-switch", "mdi:check-circle-outline",
+    ),
+    "daily": DetectorSensorDefaults(
+        None, "mdi:calendar-clock", "mdi:calendar-alert", "mdi:calendar-check",
+    ),
+    "weekly": DetectorSensorDefaults(
+        None, "mdi:calendar-week", "mdi:calendar-alert", "mdi:calendar-check",
+    ),
+    "duration": DetectorSensorDefaults(
+        "Duration Monitor", "mdi:timer-off-outline", "mdi:timer-sand", "mdi:timer-check-outline",
+    ),
+    # Completion-primary detectors
+    "contact": DetectorSensorDefaults(
+        "Contact", "mdi:door-closed", "mdi:door-open", "mdi:check-circle",
+    ),
+    "contact_cycle": DetectorSensorDefaults(
+        "Contact Cycle", "mdi:door-closed", "mdi:door-open", "mdi:door-closed-lock",
+    ),
+    "presence_cycle": DetectorSensorDefaults(
+        "Presence", "mdi:home", "mdi:home-export-outline", "mdi:home-import-outline",
+    ),
+    "sensor_state": DetectorSensorDefaults(
+        "Sensor State", "mdi:eye-off-outline", "mdi:eye", "mdi:check-circle",
+    ),
+    "sensor_threshold": DetectorSensorDefaults(
+        "Sensor Threshold", "mdi:gauge-empty", "mdi:gauge", "mdi:gauge-full",
+    ),
+}
+
+_TRIGGER_FALLBACK = DetectorSensorDefaults(
+    "Trigger Detector", "mdi:help-circle-outline", "mdi:alert-circle-outline", "mdi:check-circle-outline",
+)
+_COMPLETION_FALLBACK = DetectorSensorDefaults(
+    "Completion Detector", "mdi:checkbox-blank-outline", "mdi:checkbox-marked-circle-outline", "mdi:check-circle",
+)
 
 
 async def async_setup_entry(
@@ -116,7 +173,7 @@ class ChoreStateSensor(CoordinatorEntity[ChoresCoordinator], SensorEntity):
         super().__init__(coordinator)
         self._chore = chore
         self._attr_unique_id = f"{DOMAIN}_{chore.id}"
-        self._attr_name = chore.name
+        self._attr_name = "Chore"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, chore.id)},
         )
@@ -155,12 +212,16 @@ class ChoreStateSensor(CoordinatorEntity[ChoresCoordinator], SensorEntity):
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# TriggerProgressSensor
+# DetectorProgressSensor (shared base for trigger/completion progress)
 # ═══════════════════════════════════════════════════════════════════════
 
 
-class TriggerProgressSensor(CoordinatorEntity[ChoresCoordinator], SensorEntity):
-    """Trigger progress sub-sensor (idle/active/done)."""
+class DetectorProgressSensor(CoordinatorEntity[ChoresCoordinator], SensorEntity):
+    """Base class for trigger and completion progress sensors.
+
+    Uses the DETECTOR_SENSOR_DEFAULTS registry for default names and icons,
+    with support for dynamic names (daily/weekly) and YAML sensor: overrides.
+    """
 
     _attr_has_entity_name = True
 
@@ -169,84 +230,76 @@ class TriggerProgressSensor(CoordinatorEntity[ChoresCoordinator], SensorEntity):
         coordinator: ChoresCoordinator,
         chore: Chore,
         entry: ConfigEntry,
+        *,
+        stage: Any,
+        suffix: str,
+        fallback: DetectorSensorDefaults,
     ) -> None:
         super().__init__(coordinator)
         self._chore = chore
-        sensor_cfg = chore.trigger.sensor_config or {}
-        self._attr_unique_id = f"{DOMAIN}_{chore.id}_trigger"
+        self._stage = stage
+        sensor_cfg = stage.sensor_config or {}
+        self._attr_unique_id = f"{DOMAIN}_{chore.id}_{suffix}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, chore.id)},
         )
         self._attr_options = [s.value for s in SubState]
         self._attr_device_class = SensorDeviceClass.ENUM
 
-        # Type-aware defaults (overridden by any sensor: block in YAML)
-        trigger = chore.trigger
-        if trigger.trigger_type == TriggerType.DAILY:
-            assert isinstance(trigger, DailyTrigger)
-            time_str = trigger.trigger_time.strftime("%H:%M")
-            default_name = f"Daily at {time_str}"
-            default_icon_idle = "mdi:calendar-clock"
-            default_icon_active = "mdi:calendar-alert"
-            default_icon_done = "mdi:calendar-check"
-        elif trigger.trigger_type == TriggerType.WEEKLY:
-            assert isinstance(trigger, WeeklyTrigger)
-            # Format as "Wed 17:00, Fri 18:00"
-            parts = []
-            for weekday, t in trigger.schedule:
-                parts.append(f"{WEEKDAY_SHORT_NAMES[weekday]} {t.strftime('%H:%M')}")
-            default_name = ", ".join(parts)
-            default_icon_idle = "mdi:calendar-week"
-            default_icon_active = "mdi:calendar-alert"
-            default_icon_done = "mdi:calendar-check"
-        elif trigger.trigger_type == TriggerType.POWER_CYCLE:
-            default_name = "Power Monitor"
-            default_icon_idle = "mdi:power-plug-off"
-            default_icon_active = "mdi:power-plug"
-            default_icon_done = "mdi:power-plug-outline"
-        elif trigger.trigger_type == TriggerType.STATE_CHANGE:
-            default_name = "State Monitor"
-            default_icon_idle = "mdi:toggle-switch-off-outline"
-            default_icon_active = "mdi:toggle-switch"
-            default_icon_done = "mdi:check-circle-outline"
-        elif trigger.trigger_type == TriggerType.DURATION:
-            default_name = "Duration Monitor"
-            default_icon_idle = "mdi:timer-off-outline"
-            default_icon_active = "mdi:timer-sand"
-            default_icon_done = "mdi:timer-check-outline"
-        else:
-            default_name = "Trigger"
-            default_icon_idle = "mdi:help-circle-outline"
-            default_icon_active = "mdi:alert-circle-outline"
-            default_icon_done = "mdi:check-circle-outline"
+        # Look up defaults from registry for icons, with fallback
+        detector_type = stage.detector_type.value
+        defaults = DETECTOR_SENSOR_DEFAULTS.get(detector_type, fallback)
 
-        self._attr_name = sensor_cfg.get("name", default_name)
-        self._icon_idle = sensor_cfg.get("icon_idle", default_icon_idle)
-        self._icon_active = sensor_cfg.get("icon_active", default_icon_active)
-        self._icon_done = sensor_cfg.get("icon_done", default_icon_done)
+        # Name: always use fallback default unless YAML sensor: block overrides
+        self._attr_name = sensor_cfg.get("name", fallback.name)
+        self._icon_idle = sensor_cfg.get("icon_idle", defaults.icon_idle)
+        self._icon_active = sensor_cfg.get("icon_active", defaults.icon_active)
+        self._icon_done = sensor_cfg.get("icon_done", defaults.icon_done)
 
     @property
     def native_value(self) -> str:
-        return self._chore.trigger.state.value
+        return self._stage.state.value
 
     @property
     def icon(self) -> str | None:
-        state = self._chore.trigger.state
+        state = self._stage.state
         if state == SubState.IDLE:
-            return self._icon_idle or "mdi:cog"
+            return self._icon_idle
         if state == SubState.ACTIVE:
-            return self._icon_active or "mdi:cog-play"
+            return self._icon_active
         if state == SubState.DONE:
-            return self._icon_done or "mdi:check-circle"
-        return "mdi:cog"
+            return self._icon_done
+        return self._icon_idle
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        return self._chore.trigger.extra_attributes(self.coordinator.hass)
+        return self._stage.extra_attributes(self.coordinator.hass)
 
     @callback
     def _handle_coordinator_update(self) -> None:
         self.async_write_ha_state()
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TriggerProgressSensor
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class TriggerProgressSensor(DetectorProgressSensor):
+    """Trigger progress sub-sensor (idle/active/done)."""
+
+    def __init__(
+        self,
+        coordinator: ChoresCoordinator,
+        chore: Chore,
+        entry: ConfigEntry,
+    ) -> None:
+        super().__init__(
+            coordinator, chore, entry,
+            stage=chore.trigger,
+            suffix="trigger",
+            fallback=_TRIGGER_FALLBACK,
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -254,10 +307,8 @@ class TriggerProgressSensor(CoordinatorEntity[ChoresCoordinator], SensorEntity):
 # ═══════════════════════════════════════════════════════════════════════
 
 
-class CompletionProgressSensor(CoordinatorEntity[ChoresCoordinator], SensorEntity):
+class CompletionProgressSensor(DetectorProgressSensor):
     """Completion progress sub-sensor (idle/active/done)."""
-
-    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -265,76 +316,12 @@ class CompletionProgressSensor(CoordinatorEntity[ChoresCoordinator], SensorEntit
         chore: Chore,
         entry: ConfigEntry,
     ) -> None:
-        super().__init__(coordinator)
-        self._chore = chore
-        sensor_cfg = chore.completion.sensor_config or {}
-        self._attr_unique_id = f"{DOMAIN}_{chore.id}_completion"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, chore.id)},
+        super().__init__(
+            coordinator, chore, entry,
+            stage=chore.completion,
+            suffix="completion",
+            fallback=_COMPLETION_FALLBACK,
         )
-        self._attr_options = [s.value for s in SubState]
-        self._attr_device_class = SensorDeviceClass.ENUM
-
-        # Type-aware defaults (overridden by any sensor: block in YAML)
-        completion = chore.completion
-        if completion.completion_type == CompletionType.CONTACT:
-            default_name = "Contact"
-            default_icon_idle = "mdi:door-closed"
-            default_icon_active = "mdi:door-open"
-            default_icon_done = "mdi:check-circle"
-        elif completion.completion_type == CompletionType.CONTACT_CYCLE:
-            default_name = "Contact Cycle"
-            default_icon_idle = "mdi:door-closed"
-            default_icon_active = "mdi:door-open"
-            default_icon_done = "mdi:door-closed-lock"
-        elif completion.completion_type == CompletionType.PRESENCE_CYCLE:
-            default_name = "Presence"
-            default_icon_idle = "mdi:home"
-            default_icon_active = "mdi:home-export-outline"
-            default_icon_done = "mdi:home-import-outline"
-        elif completion.completion_type == CompletionType.SENSOR_STATE:
-            default_name = "Sensor State"
-            default_icon_idle = "mdi:eye-off-outline"
-            default_icon_active = "mdi:eye"
-            default_icon_done = "mdi:check-circle"
-        elif completion.completion_type == CompletionType.SENSOR_THRESHOLD:
-            default_name = "Sensor Threshold"
-            default_icon_idle = "mdi:gauge-empty"
-            default_icon_active = "mdi:gauge"
-            default_icon_done = "mdi:gauge-full"
-        else:
-            default_name = "Completion"
-            default_icon_idle = "mdi:checkbox-blank-outline"
-            default_icon_active = "mdi:checkbox-marked-circle-outline"
-            default_icon_done = "mdi:check-circle"
-
-        self._attr_name = sensor_cfg.get("name", default_name)
-        self._icon_idle = sensor_cfg.get("icon_idle", default_icon_idle)
-        self._icon_active = sensor_cfg.get("icon_active", default_icon_active)
-        self._icon_done = sensor_cfg.get("icon_done", default_icon_done)
-
-    @property
-    def native_value(self) -> str:
-        return self._chore.completion.state.value
-
-    @property
-    def icon(self) -> str | None:
-        state = self._chore.completion.state
-        if state == SubState.IDLE:
-            return self._icon_idle or "mdi:checkbox-blank-outline"
-        if state == SubState.ACTIVE:
-            return self._icon_active or "mdi:checkbox-marked-circle-outline"
-        if state == SubState.DONE:
-            return self._icon_done or "mdi:check-circle"
-        return "mdi:checkbox-blank-outline"
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        return self._chore.completion.extra_attributes(self.coordinator.hass)
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        self.async_write_ha_state()
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -362,7 +349,7 @@ class ResetProgressSensor(CoordinatorEntity[ChoresCoordinator], SensorEntity):
         super().__init__(coordinator)
         self._chore = chore
         self._attr_unique_id = f"{DOMAIN}_{chore.id}_reset"
-        self._attr_name = "Reset"
+        self._attr_name = "Reset Detector"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, chore.id)},
         )

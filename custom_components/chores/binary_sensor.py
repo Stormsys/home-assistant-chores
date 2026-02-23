@@ -56,8 +56,8 @@ class NeedsAttentionBinarySensor(
     ) -> None:
         super().__init__(coordinator)
         self._chore = chore
-        self._attr_unique_id = f"{DOMAIN}_{chore.id}_attention"
-        self._attr_name = f"{chore.name} Attention"
+        self._attr_unique_id = f"{DOMAIN}_{chore.id}_needs_attention"
+        self._attr_name = "Needs Attention"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, chore.id)},
         )

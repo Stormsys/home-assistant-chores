@@ -48,12 +48,12 @@ class TestDiagnostics:
         assert c2.id in result["chores"]
 
         c1_data = result["chores"][c1.id]
-        assert c1_data["name"] == c1.name
+        assert c1_data["chore_name"] == c1.name
         assert c1_data["state"] == ChoreState.INACTIVE.value
-        assert c1_data["trigger_type"] == c1.trigger_type
-        assert c1_data["completion_type"] == c1.completion_type
-        assert "trigger_snapshot" in c1_data
-        assert "completion_snapshot" in c1_data
+        assert c1_data["trigger"]["type"] == c1.trigger_type
+        assert c1_data["completion"]["type"] == c1.completion_type
+        assert "snapshot" in c1_data["trigger"]
+        assert "snapshot" in c1_data["completion"]
 
     @pytest.mark.asyncio
     async def test_includes_due_since_when_due(self):

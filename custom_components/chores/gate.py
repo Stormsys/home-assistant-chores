@@ -53,9 +53,9 @@ class Gate:
         """Listen for gate entity state changes.
 
         ``on_gate_change`` is called whenever the gate entity transitions
-        to a new state (ignoring startup / unavailable transitions).  The
-        caller (TriggerStage / CompletionStage) is responsible for checking
-        ``is_met()`` and deciding what to do.
+        to the expected state (ignoring startup / unavailable transitions).
+        The caller (TriggerStage / CompletionStage) is responsible for
+        checking ``is_met()`` and deciding what to do.
         """
 
         @callback

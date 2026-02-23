@@ -59,7 +59,7 @@ class ForceDueButton(_ChoreButtonBase):
     def __init__(self, coordinator: ChoresCoordinator, chore: Chore) -> None:
         super().__init__(coordinator, chore)
         self._attr_unique_id = f"{DOMAIN}_{chore.id}_force_due"
-        self._attr_name = f"Force {chore.name} Due"
+        self._attr_name = "Force Due"
         self._attr_icon = "mdi:alert-circle"
 
     async def async_press(self) -> None:
@@ -72,7 +72,7 @@ class ForceInactiveButton(_ChoreButtonBase):
     def __init__(self, coordinator: ChoresCoordinator, chore: Chore) -> None:
         super().__init__(coordinator, chore)
         self._attr_unique_id = f"{DOMAIN}_{chore.id}_force_inactive"
-        self._attr_name = f"Force {chore.name} Inactive"
+        self._attr_name = "Force Inactive"
         self._attr_icon = "mdi:cancel"
 
     async def async_press(self) -> None:
@@ -85,7 +85,7 @@ class ForceCompleteButton(_ChoreButtonBase):
     def __init__(self, coordinator: ChoresCoordinator, chore: Chore) -> None:
         super().__init__(coordinator, chore)
         self._attr_unique_id = f"{DOMAIN}_{chore.id}_force_complete"
-        self._attr_name = f"Force {chore.name} Complete"
+        self._attr_name = "Force Complete"
         self._attr_icon = "mdi:check-circle"
 
     async def async_press(self) -> None:

@@ -158,7 +158,7 @@ class Chore:
 
     @property
     def next_due(self) -> datetime | None:
-        """Next predicted due time (daily/weekly triggers only)."""
+        """Next predicted due time (detectors that support it, e.g. daily/weekly)."""
         return self._trigger.next_trigger_datetime
 
     @property
@@ -206,8 +206,9 @@ class Chore:
 
     def evaluate(self, hass: HomeAssistant) -> ChoreState | None:
         """Evaluate state machine. Returns old state if changed, None if unchanged."""
-        # Let trigger evaluate (for time-based checks like cooldown)
+        # Let trigger and completion evaluate (for time-based/polling checks)
         self._trigger.evaluate(hass)
+        self._completion.evaluate(hass)
 
         # Check for state transitions based on current state
         if self._state == ChoreState.INACTIVE:

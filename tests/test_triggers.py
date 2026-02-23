@@ -9,13 +9,13 @@ from freezegun import freeze_time
 from conftest import MockHass, make_state_change_event
 
 from custom_components.chores.const import SubState, TriggerType
-from custom_components.chores.triggers import (
-    DailyTrigger,
-    DurationTrigger,
-    PowerCycleTrigger,
-    StateChangeTrigger,
-    WeeklyTrigger,
-    create_trigger,
+from custom_components.chores.triggers import TriggerStage, create_trigger
+from custom_components.chores.detectors import (
+    DailyDetector,
+    DurationDetector,
+    PowerCycleDetector,
+    StateChangeDetector,
+    WeeklyDetector,
 )
 
 from homeassistant.util import dt as dt_util
@@ -35,7 +35,7 @@ class TestPowerCycleTrigger:
             "cooldown_minutes": 5,
         }
         config.update(overrides)
-        return PowerCycleTrigger(config)
+        return create_trigger(config)
 
     def test_type(self):
         t = self._make()
@@ -176,7 +176,7 @@ class TestPowerCycleTrigger:
 
 class TestStateChangeTrigger:
     def _make(self):
-        return StateChangeTrigger({
+        return create_trigger({
             "type": "state_change",
             "entity_id": "input_boolean.bin_day",
             "from": "off",
@@ -240,7 +240,7 @@ class TestStateChangeTrigger:
 
 class TestDailyTriggerNoGate:
     def _make(self):
-        return DailyTrigger({
+        return create_trigger({
             "type": "daily",
             "time": "08:00",
         })
@@ -260,7 +260,7 @@ class TestDailyTriggerNoGate:
 
     def test_trigger_time(self):
         t = self._make()
-        assert t.trigger_time == time(8, 0)
+        assert t.detector.trigger_time == time(8, 0)
 
     @freeze_time("2025-06-15 07:00:00")
     def test_before_time_stays_idle(self):
@@ -271,7 +271,7 @@ class TestDailyTriggerNoGate:
 
     @freeze_time("2025-06-15 08:01:00")
     def test_after_time_goes_done(self):
-        """Startup recovery: past trigger time → DONE."""
+        """Startup recovery: past trigger time -> DONE."""
         hass = MockHass()
         t = self._make()
         t.evaluate(hass)
@@ -318,7 +318,7 @@ class TestDailyTriggerNoGate:
 
 class TestDailyTriggerWithGate:
     def _make(self):
-        return DailyTrigger({
+        return create_trigger({
             "type": "daily",
             "time": "06:00",
             "gate": {
@@ -354,8 +354,9 @@ class TestDailyTriggerWithGate:
         hass.states.set("binary_sensor.bedroom_door_contact", "off")
         t.evaluate(hass)
         assert t.state == SubState.ACTIVE
-        # Now gate is met — manually transition (in real code this happens via listener)
-        t.set_state(SubState.DONE)
+        # Now gate is met
+        hass.states.set("binary_sensor.bedroom_door_contact", "on")
+        t.evaluate(hass)
         assert t.state == SubState.DONE
 
 
@@ -376,7 +377,7 @@ class TestWeeklyTrigger:
                 "entity_id": "binary_sensor.bedroom_door_contact",
                 "state": "on",
             }
-        return WeeklyTrigger(config)
+        return create_trigger(config)
 
     def test_type(self):
         t = self._make()
@@ -384,10 +385,10 @@ class TestWeeklyTrigger:
 
     def test_schedule_parsed(self):
         t = self._make()
-        assert len(t.schedule) == 2
+        assert len(t.detector.schedule) == 2
         # Wed=2, Fri=4
-        assert t.schedule[0] == (2, time(17, 0))
-        assert t.schedule[1] == (4, time(18, 0))
+        assert t.detector.schedule[0] == (2, time(17, 0))
+        assert t.detector.schedule[1] == (4, time(18, 0))
 
     @freeze_time("2025-06-11 17:01:00")  # Wednesday past 17:00
     def test_evaluate_fires_on_correct_day(self):
@@ -452,7 +453,7 @@ class TestDurationTrigger:
                 "entity_id": "binary_sensor.some_gate",
                 "state": "on",
             }
-        return DurationTrigger(config)
+        return create_trigger(config)
 
     def test_type(self):
         t = self._make()
@@ -533,9 +534,10 @@ class TestDurationTrigger:
         # Set duration elapsed
         t.detector._state_since = dt_util.utcnow() - timedelta(hours=49)
         t.evaluate(hass)
-        # Gate not met — detector is DONE but stage reports ACTIVE (gate_holding)
+        # Gate not met — detector is DONE but stage holds at ACTIVE
         assert t.state == SubState.ACTIVE
         assert t.detector.state == SubState.DONE
+        assert t._gate_holding is True
         # Gate met
         hass.states.set("binary_sensor.some_gate", "on")
         t.evaluate(hass)
@@ -580,7 +582,8 @@ class TestDurationTrigger:
 class TestCreateTriggerFactory:
     def test_power_cycle(self):
         t = create_trigger({"type": "power_cycle", "power_sensor": "sensor.x"})
-        assert isinstance(t, PowerCycleTrigger)
+        assert isinstance(t, TriggerStage)
+        assert isinstance(t.detector, PowerCycleDetector)
 
     def test_state_change(self):
         t = create_trigger({
@@ -589,18 +592,21 @@ class TestCreateTriggerFactory:
             "from": "off",
             "to": "on",
         })
-        assert isinstance(t, StateChangeTrigger)
+        assert isinstance(t, TriggerStage)
+        assert isinstance(t.detector, StateChangeDetector)
 
     def test_daily(self):
         t = create_trigger({"type": "daily", "time": "08:00"})
-        assert isinstance(t, DailyTrigger)
+        assert isinstance(t, TriggerStage)
+        assert isinstance(t.detector, DailyDetector)
 
     def test_weekly(self):
         t = create_trigger({
             "type": "weekly",
             "schedule": [{"day": "mon", "time": "09:00"}],
         })
-        assert isinstance(t, WeeklyTrigger)
+        assert isinstance(t, TriggerStage)
+        assert isinstance(t.detector, WeeklyDetector)
 
     def test_duration(self):
         t = create_trigger({
@@ -608,11 +614,12 @@ class TestCreateTriggerFactory:
             "entity_id": "binary_sensor.x",
             "duration_hours": 24,
         })
-        assert isinstance(t, DurationTrigger)
+        assert isinstance(t, TriggerStage)
+        assert isinstance(t.detector, DurationDetector)
 
     def test_unknown_raises(self):
         import pytest
-        with pytest.raises(ValueError, match="Unknown detector type"):
+        with pytest.raises(ValueError):
             create_trigger({"type": "nonexistent"})
 
 
@@ -623,7 +630,7 @@ class TestPowerCycleBadSensorValues:
     """Test that non-numeric and edge-case sensor states don't crash."""
 
     def _make(self):
-        return PowerCycleTrigger({
+        return create_trigger({
             "type": "power_cycle",
             "power_sensor": "sensor.power",
             "current_sensor": "sensor.current",
@@ -697,19 +704,19 @@ class TestPowerCycleBadSensorValues:
         hass = MockHass()
         trigger = self._make()
 
-        # Power high → ACTIVE
+        # Power high -> ACTIVE
         hass.states.set("sensor.power", "50")
         hass.states.set("sensor.current", "0.01")
         trigger.detector._evaluate_power(hass)
         assert trigger.state == SubState.ACTIVE
         assert trigger.detector._machine_running is True
 
-        # Power drops → cooldown starts
+        # Power drops -> cooldown starts
         hass.states.set("sensor.power", "1")
         trigger.detector._evaluate_power(hass)
         assert trigger.detector._power_dropped_at is not None
 
-        # Power rises again → cooldown cancelled
+        # Power rises again -> cooldown cancelled
         hass.states.set("sensor.power", "50")
         trigger.detector._evaluate_power(hass)
         assert trigger.detector._power_dropped_at is None
@@ -722,13 +729,12 @@ class TestPowerCycleBadSensorValues:
 class TestDurationTriggerStartupRecovery:
     def test_startup_with_persisted_state_since(self):
         """After restart, entity in target state uses persisted _state_since."""
-        config = {
+        trigger = create_trigger({
             "type": "duration",
             "entity_id": "binary_sensor.contact",
             "state": "on",
             "duration_hours": 1,
-        }
-        trigger = DurationTrigger(config)
+        })
         hass = MockHass()
         hass.states.set("binary_sensor.contact", "on")
 
@@ -740,18 +746,17 @@ class TestDurationTriggerStartupRecovery:
             trigger.evaluate(hass)
             # Should use persisted _state_since, not overwrite with now
             assert trigger.detector._state_since == two_hours_ago
-            # 2.5 hours > 1 hour → should be DONE
+            # 2.5 hours > 1 hour -> should be DONE
             assert trigger.state == SubState.DONE
 
     def test_startup_no_persisted_uses_now(self):
         """After restart, entity in target state with no persisted time uses now."""
-        config = {
+        trigger = create_trigger({
             "type": "duration",
             "entity_id": "binary_sensor.contact",
             "state": "on",
             "duration_hours": 1,
-        }
-        trigger = DurationTrigger(config)
+        })
         hass = MockHass()
         hass.states.set("binary_sensor.contact", "on")
 
@@ -763,13 +768,12 @@ class TestDurationTriggerStartupRecovery:
 
     def test_startup_entity_unavailable_stays_idle(self):
         """If entity is unavailable on startup, stay IDLE."""
-        config = {
+        trigger = create_trigger({
             "type": "duration",
             "entity_id": "binary_sensor.contact",
             "state": "on",
             "duration_hours": 1,
-        }
-        trigger = DurationTrigger(config)
+        })
         hass = MockHass()
         hass.states.set("binary_sensor.contact", "unavailable")
 
@@ -778,13 +782,12 @@ class TestDurationTriggerStartupRecovery:
 
     def test_safety_check_entity_left_target_between_polls(self):
         """If entity leaves target state between polls, reset to IDLE."""
-        config = {
+        trigger = create_trigger({
             "type": "duration",
             "entity_id": "binary_sensor.contact",
             "state": "on",
             "duration_hours": 48,
-        }
-        trigger = DurationTrigger(config)
+        })
         hass = MockHass()
         hass.states.set("binary_sensor.contact", "on")
 
@@ -801,13 +804,12 @@ class TestDurationTriggerStartupRecovery:
 
     def test_safety_check_ignores_unavailable(self):
         """Unavailable during ACTIVE doesn't reset the timer."""
-        config = {
+        trigger = create_trigger({
             "type": "duration",
             "entity_id": "binary_sensor.contact",
             "state": "on",
             "duration_hours": 48,
-        }
-        trigger = DurationTrigger(config)
+        })
         hass = MockHass()
         hass.states.set("binary_sensor.contact", "on")
 
@@ -834,13 +836,12 @@ class TestDurationTriggerListenerFiltering:
     def test_ignores_old_state_none(self):
         from conftest import setup_listeners_capturing
 
-        config = {
+        trigger = create_trigger({
             "type": "duration",
             "entity_id": "binary_sensor.contact",
             "state": "on",
             "duration_hours": 1,
-        }
-        trigger = DurationTrigger(config)
+        })
         hass = MockHass()
         state_cbs, _, on_change = setup_listeners_capturing(hass, trigger)
         listener_cb = state_cbs[0]
@@ -852,13 +853,12 @@ class TestDurationTriggerListenerFiltering:
     def test_ignores_old_state_unavailable(self):
         from conftest import setup_listeners_capturing
 
-        config = {
+        trigger = create_trigger({
             "type": "duration",
             "entity_id": "binary_sensor.contact",
             "state": "on",
             "duration_hours": 1,
-        }
-        trigger = DurationTrigger(config)
+        })
         hass = MockHass()
         state_cbs, _, _ = setup_listeners_capturing(hass, trigger)
         listener_cb = state_cbs[0]
@@ -870,14 +870,13 @@ class TestDurationTriggerListenerFiltering:
     def test_ignores_new_state_unavailable(self):
         from conftest import setup_listeners_capturing
 
-        config = {
+        trigger = create_trigger({
             "type": "duration",
             "entity_id": "binary_sensor.contact",
             "state": "on",
             "duration_hours": 1,
-        }
-        trigger = DurationTrigger(config)
-        trigger.set_state(SubState.ACTIVE)
+        })
+        trigger.detector.set_state(SubState.ACTIVE)
         trigger.detector._state_since = datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
         hass = MockHass()
         state_cbs, _, _ = setup_listeners_capturing(hass, trigger)
@@ -892,14 +891,13 @@ class TestDurationTriggerListenerFiltering:
     def test_ignores_attribute_only_change(self):
         from conftest import setup_listeners_capturing
 
-        config = {
+        trigger = create_trigger({
             "type": "duration",
             "entity_id": "binary_sensor.contact",
             "state": "on",
             "duration_hours": 1,
-        }
-        trigger = DurationTrigger(config)
-        trigger.set_state(SubState.ACTIVE)
+        })
+        trigger.detector.set_state(SubState.ACTIVE)
         trigger.detector._state_since = datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
         hass = MockHass()
         state_cbs, _, _ = setup_listeners_capturing(hass, trigger)
@@ -913,13 +911,12 @@ class TestDurationTriggerListenerFiltering:
     def test_enters_target_state_via_listener(self):
         from conftest import setup_listeners_capturing
 
-        config = {
+        trigger = create_trigger({
             "type": "duration",
             "entity_id": "binary_sensor.contact",
             "state": "on",
             "duration_hours": 1,
-        }
-        trigger = DurationTrigger(config)
+        })
         hass = MockHass()
         state_cbs, _, on_change = setup_listeners_capturing(hass, trigger)
         listener_cb = state_cbs[0]
@@ -932,14 +929,13 @@ class TestDurationTriggerListenerFiltering:
     def test_leaves_target_state_via_listener(self):
         from conftest import setup_listeners_capturing
 
-        config = {
+        trigger = create_trigger({
             "type": "duration",
             "entity_id": "binary_sensor.contact",
             "state": "on",
             "duration_hours": 1,
-        }
-        trigger = DurationTrigger(config)
-        trigger.set_state(SubState.ACTIVE)
+        })
+        trigger.detector.set_state(SubState.ACTIVE)
         trigger.detector._state_since = datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
         hass = MockHass()
         state_cbs, _, on_change = setup_listeners_capturing(hass, trigger)

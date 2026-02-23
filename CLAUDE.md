@@ -18,46 +18,64 @@ home-assistant-chores/
 ├── .github/workflows/tests.yml           # GitHub Actions CI — runs on push/PR to main
 ├── ARCHITECTURE.md                        # Detailed internal architecture docs
 ├── CLAUDE.md                              # This file
+├── docs/configuration.md                  # Full YAML configuration reference
 ├── example_configuration.yaml            # Reference YAML config showing all trigger/completion types
 ├── hacs.json                              # HACS metadata
 ├── pytest.ini                             # Pytest config (testpaths, asyncio_mode)
 ├── requirements_test.txt                  # Test dependencies
 ├── tests/
-│   ├── conftest.py            # HA module stubs, MockHass, 9 config builders
+│   ├── conftest.py            # HA module stubs, MockHass, 10 config builders
 │   ├── test_binary_sensor.py  # NeedsAttentionBinarySensor tests
 │   ├── test_button.py         # Force action button tests
 │   ├── test_chore_core.py     # Chore state machine tests
-│   ├── test_completions.py    # All 5 completion type tests + factory
+│   ├── test_completions.py    # All 6 completion detector tests via CompletionStage
 │   ├── test_const.py          # Enum and constant smoke tests
 │   ├── test_coordinator.py    # ChoresCoordinator tests
-│   ├── test_example_configs.py # Full lifecycle tests for all 9 example configs
+│   ├── test_example_configs.py # Full lifecycle tests for all 10 example configs
+│   ├── test_listener_lifecycle.py # Listener setup/teardown lifecycle tests
 │   ├── test_logbook.py        # Logbook describe function tests
 │   ├── test_resets.py         # All 5 reset type tests + factory
 │   ├── test_schemas.py        # YAML voluptuous schema validation tests
-│   ├── test_sensor.py         # All 5 sensor entity tests
+│   ├── test_sensor.py         # All 5 sensor entity tests + DetectorProgressSensor base
 │   ├── test_store.py          # ChoreStore persistence tests
-│   └── test_triggers.py       # All 5 trigger type tests + factory
+│   └── test_triggers.py       # All 5 trigger detector tests via TriggerStage
 └── custom_components/
     └── chores/
         ├── __init__.py        # Integration setup, YAML schema, service registration
         ├── chore.py           # Backwards-compat re-export of Chore class
         ├── chore_core.py      # Chore state machine orchestrator (the core class)
-        ├── completions.py     # Completion type implementations + factory
+        ├── completions.py     # CompletionStage wrapper (detector + enable/disable + gate)
         ├── config_flow.py     # Config flow (YAML import only)
         ├── const.py           # Enums, constants, event names, attribute names
         ├── coordinator.py     # DataUpdateCoordinator — holds all chores, polls, fires events
+        ├── detectors/         # Generic stage-agnostic detector package
+        │   ├── __init__.py    # DETECTOR_REGISTRY, create_detector() factory
+        │   ├── base.py        # BaseDetector ABC
+        │   ├── helpers.py     # Shared constants (WEEKDAY_MAP, WEEKDAY_SHORT_NAMES)
+        │   ├── power_cycle.py # PowerCycleDetector
+        │   ├── state_change.py # StateChangeDetector
+        │   ├── daily.py       # DailyDetector
+        │   ├── weekly.py      # WeeklyDetector
+        │   ├── duration.py    # DurationDetector
+        │   ├── manual.py      # ManualDetector
+        │   ├── sensor_state.py # SensorStateDetector
+        │   ├── contact.py     # ContactDetector
+        │   ├── contact_cycle.py # ContactCycleDetector
+        │   ├── presence_cycle.py # PresenceCycleDetector
+        │   └── sensor_threshold.py # SensorThresholdDetector
         ├── diagnostics.py     # HA diagnostics support
+        ├── gate.py            # Reusable gate logic (entity + state condition)
         ├── icon.svg           # Integration icon
         ├── manifest.json      # Integration manifest
         ├── resets.py          # Reset type implementations + factory
-        ├── sensor.py          # Sensor entity classes
+        ├── sensor.py          # Sensor entity classes + DETECTOR_SENSOR_DEFAULTS registry
         ├── binary_sensor.py   # Binary sensor entity (needs-attention)
         ├── button.py          # Button entities (force due/inactive/complete)
         ├── services.yaml      # Service descriptions for UI
         ├── store.py           # Persistent state store (HA .storage/chores)
         ├── strings.json       # Translations / entity strings
-        ├── triggers.py        # Trigger type implementations + factory
-        └── logbook.py         # Logbook platform — human-readable entries for all state events
+        ├── triggers.py        # TriggerStage wrapper (detector + gate)
+        └── logbook.py         # Logbook platform — data-driven message registries
 ```
 
 ---
@@ -110,8 +128,9 @@ Defines all shared constants, enums, and event/attribute names. Always import co
 Key enums:
 - `ChoreState` — the 5-state chore lifecycle.
 - `SubState` — the 3-state sub-state for triggers and completions.
-- `TriggerType` — `power_cycle`, `state_change`, `daily`, `weekly`, `duration`.
-- `CompletionType` — `manual`, `sensor_state`, `contact`, `contact_cycle`, `presence_cycle`.
+- `DetectorType` — unified namespace for all 11 detection patterns (used by detectors).
+- `TriggerType` — 10 values: the 5 trigger-primary types + 5 cross-stage types from completions.
+- `CompletionType` — 9 values: the 6 completion-primary types + 3 cross-stage types from triggers.
 - `ResetType` — `delay`, `daily_reset`, `implicit_daily`, `implicit_weekly`, `implicit_event`.
 
 Key constants:
@@ -128,49 +147,47 @@ Services:
 
 ---
 
+### `detectors/` package
+Generic, stage-agnostic detection logic. Each detector monitors HA entities or the clock and transitions through `idle → active → done`. Detectors contain pure detection logic with no knowledge of enable/disable gating or gate conditions.
+
+| Detector | Class | Steps | Behaviour |
+|---|---|---|---|
+| `power_cycle` | `PowerCycleDetector` | 1 | Active when power/current above threshold; done after cooldown once power drops. |
+| `state_change` | `StateChangeDetector` | 1 | Active when entity is in `from` state; done when it transitions to `to` state. |
+| `daily` | `DailyDetector` | 1 | Done at configured time daily. Trigger-only. |
+| `weekly` | `WeeklyDetector` | 1 | Like daily but fires on specific weekdays at per-day times. Trigger-only. |
+| `duration` | `DurationDetector` | 1 | Active when entity enters target state; done after `duration_hours`. Timer survives restarts. |
+| `manual` | `ManualDetector` | 1 | No sensor; completed only via `force_complete`. Completion-only. |
+| `sensor_state` | `SensorStateDetector` | 1 | Done when watched entity enters `target_state`. |
+| `contact` | `ContactDetector` | 1 | Done when contact sensor goes `on`. |
+| `contact_cycle` | `ContactCycleDetector` | 2 | Active on `on` (step 1); done on `off` (step 2). |
+| `presence_cycle` | `PresenceCycleDetector` | 2 | Active when person leaves; done when they return. Auto-detects entity domain. |
+| `sensor_threshold` | `SensorThresholdDetector` | 1 | Done when numeric sensor value crosses threshold (above/below/equal). |
+
+`DETECTOR_REGISTRY` maps `DetectorType` to classes. `create_detector(config)` is the factory function.
+
 ### `triggers.py`
-Trigger types detect *when* a chore should become due.
+`TriggerStage` wraps a detector with optional gate holding. When the detector fires DONE but the gate isn't met, the stage reports ACTIVE (pending) instead. Uses `create_trigger(config)` factory.
 
-| Trigger type | Class | Behaviour |
-|---|---|---|
-| `power_cycle` | `PowerCycleTrigger` | Active when power/current above threshold; done after cooldown once power drops. |
-| `state_change` | `StateChangeTrigger` | Active when entity is in `from` state; done when it transitions to `to` state. |
-| `daily` | `DailyTrigger` | Done at configured time daily. Optionally stays pending until a gate entity enters the expected state. |
-| `weekly` | `WeeklyTrigger` | Like daily but fires on specific weekdays at per-day times. Supports gate. |
-| `duration` | `DurationTrigger` | Active when entity enters target state; done after it has remained in that state for `duration_hours`. Timer survives HA restarts and ignores transient `unavailable`/`unknown` states. |
-
-**Adding a new trigger:**
-1. Subclass `BaseTrigger`.
-2. Set `trigger_type: TriggerType` class attribute.
-3. Implement all abstract methods: `_reset_internal`, `async_setup_listeners`, `extra_attributes`, `_snapshot_internal`, `_restore_internal`.
-4. Override `evaluate(hass)` if the trigger needs time-based polling (called every 60 s).
-5. Register in `TRIGGER_FACTORY` dict at the bottom of `triggers.py`.
-6. Add the new type to `TriggerType` enum in `const.py`.
-7. Add a voluptuous schema branch to `TRIGGER_SCHEMA` in `__init__.py`.
-
-All listeners must be registered via `self._listeners.append(unsub)` so they are cleaned up by `async_remove_listeners()`.
-
----
+`BaseTrigger = TriggerStage` is a backwards-compat alias.
 
 ### `completions.py`
-Completion types detect *when* a chore has been performed.
+`CompletionStage` wraps a detector with enable/disable gating, steps tracking, and optional gate holding. Completions only fire when `_enabled = True`. Uses `create_completion(config)` factory.
 
-| Completion type | Class | Steps | Behaviour |
-|---|---|---|---|
-| `manual` | `ManualCompletion` | 1 | No sensor; completed only via `force_complete` service/button. |
-| `sensor_state` | `SensorStateCompletion` | 1 | Done when watched entity enters `target_state`. |
-| `contact` | `ContactCompletion` | 1 | Done when contact sensor goes `on`. |
-| `contact_cycle` | `ContactCycleCompletion` | 2 | Active on `on` (step 1); done on `off` (step 2). Drives `STARTED` intermediate state. |
-| `presence_cycle` | `PresenceCycleCompletion` | 2 | Active when person leaves (`not_home` / `off`); done when they return (`home` / `on`). Auto-detects entity domain. |
+`BaseCompletion = CompletionStage` is a backwards-compat alias.
 
-Completions are **disabled by default**. The `Chore` class calls `completion.enable()` when the chore enters `DUE`/`PENDING`, and `completion.reset()` when returning to `INACTIVE`.
+### `gate.py`
+Reusable gate logic extracted from the old trigger classes. Checks if a gate entity is in the expected state, registers state change listeners, and provides extra attributes.
 
-**Adding a new completion:**
-1. Subclass `BaseCompletion`.
-2. Set `completion_type: CompletionType` and `steps_total: int` class attributes.
-3. Implement all abstract methods.
-4. Register in `COMPLETION_FACTORY` dict and `CompletionType` enum.
-5. Add a voluptuous schema branch to `COMPLETION_SCHEMA` in `__init__.py`.
+**Adding a new detector:**
+1. Add `DetectorType.MY_TYPE` to `const.py`. Also add to `TriggerType` and/or `CompletionType` as appropriate.
+2. Create `detectors/my_type.py`, subclass `BaseDetector`, set `detector_type` and `steps_total`.
+3. Implement all abstract methods: `_reset_internal`, `async_setup_listeners`, `extra_attributes`, `_snapshot_internal`, `_restore_internal`.
+4. Override `evaluate(hass)` if needed for polling, `check_immediate()` for enable-time checks.
+5. Register in `DETECTOR_REGISTRY` in `detectors/__init__.py`.
+6. Add schema branch(es) to `TRIGGER_SCHEMA` and/or `COMPLETION_SCHEMA` in `__init__.py`.
+7. Add entry to `DETECTOR_SENSOR_DEFAULTS` in `sensor.py`.
+8. Add message entries to logbook registries in `logbook.py`.
 
 ---
 
@@ -236,48 +253,48 @@ Integration entry point:
 ---
 
 ### `logbook.py`
-Logbook platform automatically discovered by HA's logbook integration. Provides human-readable entries for every chore state transition event, linked to the chore's main sensor entity.
+Logbook platform automatically discovered by HA's logbook integration. Uses **data-driven message registries** (dicts) instead of if/elif chains.
 
+- `_PENDING_MESSAGES`, `_DUE_MESSAGES` — keyed by trigger type string.
+- `_STARTED_MESSAGES`, `_COMPLETED_MESSAGES` — keyed by completion type string.
 - `async_describe_events(hass, async_describe_event)` — registers a single describe callback for all five `chores.*` events.
-- The callback looks up the chore from `hass.data` to access `trigger_type` and `completion_type` for context-aware messages.
+- The callback looks up the chore from `hass.data` to access `trigger_type` and `completion_type` for dict lookups.
 - Entity linkage is resolved at runtime from the entity registry using the unique ID `chores_{chore_id}`.
-- Returns `None` (suppressing the entry) when the integration has `logbook: false` in YAML — checked via the `logbook_enabled` flag included in every event's data payload by the coordinator.
+- Returns `None` (suppressing the entry) when the integration has `logbook: false` in YAML.
 
-**Invariant:** whenever a new `TriggerType` or `CompletionType` is added, a matching branch must be added to `_describe_pending`/`_describe_due` (for triggers) or `_describe_started`/`_describe_completed` (for completions) in `logbook.py` so the new type gets a meaningful message rather than falling through to the generic default.
+**Invariant:** whenever a new detector type is added, add entries to the appropriate message dicts in `logbook.py`.
 
 ---
 
 ### Platform Modules
 
 #### `sensor.py`
-Creates sensor entities per chore:
+Creates sensor entities per chore. Uses `DETECTOR_SENSOR_DEFAULTS` registry for default icons.
 
-| Entity | Unique ID suffix | Notes |
-|---|---|---|
-| `ChoreStateSensor` | `{domain}_{chore_id}` | Main state machine; `ENUM` device class; exposes `to_state_dict` as attributes. Entity services: `force_due`, `force_inactive`, `force_complete`. |
-| `TriggerProgressSensor` | `_{chore_id}_trigger` | Always created; shows `idle/active/done`. Default name and icons are type-aware (see below). |
-| `CompletionProgressSensor` | `_{chore_id}_completion` | Always created except for `manual` completion; shows `idle/active/done`. Default name and icons are type-aware (see below). |
-| `ResetProgressSensor` | `_{chore_id}_reset` | Always created; shows `idle/waiting` with `next_reset_at`. |
-| `LastCompletedSensor` | `_{chore_id}_last_completed` | Diagnostic; timestamp device class; exposes `completed_by`, `completion_count_today`, `completion_count_7d`. |
-
-**Default trigger sensor names/icons** (overridden by `sensor:` block in YAML):
-
-| Trigger type | Default name | idle icon | active icon | done icon |
+| Entity | Class | Unique ID suffix | Default name | Notes |
 |---|---|---|---|---|
-| `daily` | `Daily at HH:MM` | `mdi:calendar-clock` | `mdi:calendar-alert` | `mdi:calendar-check` |
-| `weekly` | `Wed 17:00, Fri 18:00` | `mdi:calendar-week` | `mdi:calendar-alert` | `mdi:calendar-check` |
-| `power_cycle` | `Power Monitor` | `mdi:power-plug-off` | `mdi:power-plug` | `mdi:power-plug-outline` |
-| `state_change` | `State Monitor` | `mdi:toggle-switch-off-outline` | `mdi:toggle-switch` | `mdi:check-circle-outline` |
-| `duration` | `Duration Monitor` | `mdi:timer-off-outline` | `mdi:timer-sand` | `mdi:timer-check-outline` |
+| Main state | `ChoreStateSensor` | `{domain}_{chore_id}` | `"Chore"` | `ENUM` device class; entity services. |
+| Trigger progress | `TriggerProgressSensor` | `_{chore_id}_trigger` | `"Trigger Detector"` | Inherits `DetectorProgressSensor`. |
+| Completion progress | `CompletionProgressSensor` | `_{chore_id}_completion` | `"Completion Detector"` | Inherits `DetectorProgressSensor`. Skipped for `manual`. |
+| Reset progress | `ResetProgressSensor` | `_{chore_id}_reset` | `"Reset Detector"` | Shows `idle/waiting` with `next_reset_at`. |
+| Last completed | `LastCompletedSensor` | `_{chore_id}_last_completed` | `"Last Completed"` | Diagnostic timestamp. |
 
-**Default completion sensor names/icons** (overridden by `sensor:` block in YAML):
+`DetectorProgressSensor` is the shared base class for trigger and completion progress sensors. Default names are always `"Trigger Detector"` or `"Completion Detector"` (from fallback defaults), overridable by the YAML `sensor: { name: "..." }` block. The `DETECTOR_SENSOR_DEFAULTS` registry provides per-detector-type **icons only**.
 
-| Completion type | Default name | idle icon | active icon | done icon |
-|---|---|---|---|---|
-| `contact` | `Contact` | `mdi:door-closed` | `mdi:door-open` | `mdi:check-circle` |
-| `contact_cycle` | `Contact Cycle` | `mdi:door-closed` | `mdi:door-open` | `mdi:door-closed-lock` |
-| `presence_cycle` | `Presence` | `mdi:home` | `mdi:home-export-outline` | `mdi:home-import-outline` |
-| `sensor_state` | `Sensor State` | `mdi:eye-off-outline` | `mdi:eye` | `mdi:check-circle` |
+**`DETECTOR_SENSOR_DEFAULTS` icon registry** (icons overridden by `sensor:` block in YAML):
+
+| Detector type | idle icon | active icon | done icon |
+|---|---|---|---|
+| `power_cycle` | `mdi:power-plug-off` | `mdi:power-plug` | `mdi:power-plug-outline` |
+| `state_change` | `mdi:toggle-switch-off-outline` | `mdi:toggle-switch` | `mdi:check-circle-outline` |
+| `daily` | `mdi:calendar-clock` | `mdi:calendar-alert` | `mdi:calendar-check` |
+| `weekly` | `mdi:calendar-week` | `mdi:calendar-alert` | `mdi:calendar-check` |
+| `duration` | `mdi:timer-off-outline` | `mdi:timer-sand` | `mdi:timer-check-outline` |
+| `contact` | `mdi:door-closed` | `mdi:door-open` | `mdi:check-circle` |
+| `contact_cycle` | `mdi:door-closed` | `mdi:door-open` | `mdi:door-closed-lock` |
+| `presence_cycle` | `mdi:home` | `mdi:home-export-outline` | `mdi:home-import-outline` |
+| `sensor_state` | `mdi:eye-off-outline` | `mdi:eye` | `mdi:check-circle` |
+| `sensor_threshold` | `mdi:gauge-empty` | `mdi:gauge` | `mdi:gauge-full` |
 
 #### `binary_sensor.py`
 One `NeedsAttentionBinarySensor` per chore (`PROBLEM` device class):
@@ -458,7 +475,7 @@ State survives HA restarts through two mechanisms:
 
 Fields that are **not** persisted (recalculated at runtime):
 - Listener subscriptions.
-- `_machine_running` for `PowerCycleTrigger` (re-evaluated on next state change).
+- `_machine_running` for `PowerCycleDetector` (re-evaluated on next state change).
 
 ---
 
@@ -475,23 +492,15 @@ Fields that are **not** persisted (recalculated at runtime):
 
 ### Extending the Integration
 
-**Adding a new trigger type:**
-1. Add value to `TriggerType` in `const.py`.
-2. Create a class extending `BaseTrigger` in `triggers.py`.
-3. Register in `TRIGGER_FACTORY`.
-4. Add a schema branch to `TRIGGER_SCHEMA` in `__init__.py`.
-5. Add a `_describe_pending` and `_describe_due` branch for the new type in `logbook.py`.
-6. Add tests: unit tests in `test_triggers.py`, describe tests in `test_logbook.py`, sensor defaults in `test_sensor.py`, enum count in `test_const.py`, schema validation in `test_schemas.py`.
-7. Add a config builder to `conftest.py` and a lifecycle test to `test_example_configs.py`.
-
-**Adding a new completion type:**
-1. Add value to `CompletionType` in `const.py`.
-2. Create a class extending `BaseCompletion` in `completions.py`.
-3. Register in `COMPLETION_FACTORY`.
-4. Add a schema branch to `COMPLETION_SCHEMA` in `__init__.py`.
-5. Add a `_describe_started` and `_describe_completed` branch for the new type in `logbook.py`.
-6. Add tests: unit tests in `test_completions.py`, describe tests in `test_logbook.py`, sensor defaults in `test_sensor.py`, enum count in `test_const.py`, schema validation in `test_schemas.py`.
-7. Add a config builder to `conftest.py` and a lifecycle test to `test_example_configs.py`.
+**Adding a new detector type:**
+1. Add `DetectorType.MY_TYPE` to `const.py`. Also add to `TriggerType` and/or `CompletionType`.
+2. Create `detectors/my_type.py`, subclass `BaseDetector`.
+3. Register in `DETECTOR_REGISTRY` in `detectors/__init__.py`.
+4. Add schema branch(es) to `TRIGGER_SCHEMA` and/or `COMPLETION_SCHEMA` in `__init__.py`.
+5. Add entry to `DETECTOR_SENSOR_DEFAULTS` in `sensor.py`.
+6. Add message entries to logbook registries (`_PENDING_MESSAGES`, `_DUE_MESSAGES`, `_STARTED_MESSAGES`, `_COMPLETED_MESSAGES`) in `logbook.py`.
+7. Add tests: unit tests in `test_triggers.py`/`test_completions.py`, describe tests in `test_logbook.py`, sensor defaults in `test_sensor.py`, enum count in `test_const.py`, schema validation in `test_schemas.py`.
+8. Add a config builder to `conftest.py` and a lifecycle test to `test_example_configs.py`.
 
 **Adding a new reset type:**
 1. Add value to `ResetType` in `const.py`.
@@ -501,16 +510,16 @@ Fields that are **not** persisted (recalculated at runtime):
 5. Add tests: unit tests in `test_resets.py`, enum count in `test_const.py`, schema validation in `test_schemas.py`.
 
 **Adding new persistent state fields:**
-- Either add them to the component's `_snapshot_internal()` / `_restore_internal()` methods, or store them in the store directly.
+- Either add them to the detector's `_snapshot_internal()` / `_restore_internal()` methods, or store them in the store directly.
 
 ### Critical Invariants to Preserve
 - **State machine semantics** — `INACTIVE`, `PENDING`, `DUE`, `STARTED`, `COMPLETED` are used by binary sensors, events, and entities. Do not redefine their meaning.
 - **Listener cleanup** — every `async_track_*` call must have a corresponding unsubscribe stored in `self._listeners`.
 - **Completion enable/disable** — completions only fire when `_enabled = True`. The `Chore` class manages this. Do not bypass it.
-- **Factory contract** — if you add a chore component type, keep its factory and the YAML schema in sync.
+- **Detector registry sync** — if you add a detector type, keep `DETECTOR_REGISTRY`, `DetectorType` enum, `TriggerType`/`CompletionType` enums, YAML schemas, `DETECTOR_SENSOR_DEFAULTS`, and logbook message dicts all in sync.
 - **Single coordinator per entry** — `hass.data[DOMAIN][entry.entry_id]["coordinator"]` is the canonical access point.
 - **Polling interval** — the coordinator polls every 60 seconds (`UPDATE_INTERVAL` in `coordinator.py`). Do not tighten this for time-sensitive checks; use event listeners instead.
-- **Logbook coverage** — when adding a new `TriggerType` or `CompletionType`, always add a matching branch in `logbook.py`. The describe functions fall back to generic messages, but every type should have a specific, human-readable description. The `logbook_enabled` (integration-level) and `forced` flags must always be included in event data via `coordinator._fire_event`.
+- **Logbook coverage** — when adding a new detector type, always add entries to the message dicts in `logbook.py`. The `logbook_enabled` and `forced` flags must always be included in event data via `coordinator._fire_event`.
 
 ---
 
@@ -541,14 +550,21 @@ Unique IDs are stable internal identifiers (never change, survive renames). All 
 
 ### Display name convention
 
-The `_attr_has_entity_name = True` pattern is used on all entity classes — HA concatenates the **device name** (chore name) with the **entity name** for display. Keep entity names short and role-focused, not repeating the chore name:
+The `_attr_has_entity_name = True` pattern is used on all entity classes — HA concatenates the **device name** (chore name) with the **entity name** for display. Entity names are role-focused and never repeat the chore name:
 
-| Entity name | Displayed as (chore "Take Vitamins") |
-|---|---|
-| `"Take Vitamins"` (main sensor) | "Take Vitamins" |
-| `"Daily at 06:00"` (trigger) | "Take Vitamins Daily at 06:00" |
-| `"Contact Cycle"` (completion) | "Take Vitamins Contact Cycle" |
-| `"Reset"` (reset sensor) | "Take Vitamins Reset" |
+| Entity name | Displayed as (chore "Take Vitamins") | Entity ID |
+|---|---|---|
+| `"Chore"` (main sensor) | "Take Vitamins Chore" | `sensor.take_vitamins_chore` |
+| `"Trigger Detector"` (trigger) | "Take Vitamins Trigger Detector" | `sensor.take_vitamins_trigger_detector` |
+| `"Completion Detector"` (completion) | "Take Vitamins Completion Detector" | `sensor.take_vitamins_completion_detector` |
+| `"Reset Detector"` (reset) | "Take Vitamins Reset Detector" | `sensor.take_vitamins_reset_detector` |
+| `"Last Completed"` (diagnostic) | "Take Vitamins Last Completed" | `sensor.take_vitamins_last_completed` |
+| `"Needs Attention"` (binary) | "Take Vitamins Needs Attention" | `binary_sensor.take_vitamins_needs_attention` |
+| `"Force Due"` (button) | "Take Vitamins Force Due" | `button.take_vitamins_force_due` |
+| `"Force Inactive"` (button) | "Take Vitamins Force Inactive" | `button.take_vitamins_force_inactive` |
+| `"Force Complete"` (button) | "Take Vitamins Force Complete" | `button.take_vitamins_force_complete` |
+
+Trigger and completion sensor names can be overridden via the YAML `sensor: { name: "..." }` block.
 
 ---
 
@@ -560,7 +576,7 @@ The `_attr_has_entity_name = True` pattern is used on all entity classes — HA 
 pytest tests/ -v --tb=short
 ```
 
-All 344 tests should pass. Tests run on every push and PR to `main` via GitHub Actions (`.github/workflows/tests.yml`).
+All 472 tests should pass. Tests run on every push and PR to `main` via GitHub Actions (`.github/workflows/tests.yml`).
 
 ### CI Setup
 
@@ -602,7 +618,7 @@ After any code change, run:
 pytest tests/ -v --tb=short
 ```
 
-**All 344 tests must pass before committing.** If you added a new component type, trigger type, or entity, you must also add tests (see "Keeping Tests Up to Date" below).
+**All 472 tests must pass before committing.** If you added a new component type, trigger type, or entity, you must also add tests (see "Keeping Tests Up to Date" below).
 
 ### Keeping Tests Up to Date
 
@@ -610,8 +626,7 @@ When extending the integration, add tests alongside the code change. The table b
 
 | Change | Test files to update |
 |---|---|
-| New trigger type | `test_triggers.py` (unit tests for the new class), `test_logbook.py` (new describe branches), `test_sensor.py` (new trigger sensor defaults), `test_const.py` (enum count), `test_schemas.py` (schema validation), add a new config builder to `conftest.py` and a lifecycle test to `test_example_configs.py` |
-| New completion type | `test_completions.py` (unit tests), `test_logbook.py` (new describe branches), `test_sensor.py` (completion sensor defaults), `test_const.py` (enum count), `test_schemas.py` (schema validation), add a new config builder to `conftest.py` and a lifecycle test to `test_example_configs.py` |
+| New detector type | `test_triggers.py` and/or `test_completions.py` (detector unit tests), `test_logbook.py` (message entries), `test_sensor.py` (sensor defaults), `test_const.py` (enum counts), `test_schemas.py` (schema validation), add config builder to `conftest.py` and lifecycle test to `test_example_configs.py` |
 | New reset type | `test_resets.py` (unit tests), `test_const.py` (enum count), `test_schemas.py` (schema validation) |
 | New entity | Corresponding `test_sensor.py` / `test_binary_sensor.py` / `test_button.py` |
 | New example config | Add config builder to `conftest.py`, add lifecycle test to `test_example_configs.py`, add schema test to `test_schemas.py` |
