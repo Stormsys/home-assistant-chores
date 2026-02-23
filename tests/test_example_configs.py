@@ -42,7 +42,7 @@ class TestUnloadWashingLifecycle:
         # 1. Power goes above threshold → trigger ACTIVE → chore PENDING
         hass.states.set("sensor.washing_machine_plug_power", "50.0")
         hass.states.set("sensor.washing_machine_plug_current", "0.5")
-        chore.trigger._evaluate_power(hass)
+        chore.trigger.detector._evaluate_power(hass)
         chore.evaluate(hass)
         assert chore.trigger.state == SubState.ACTIVE
         assert chore.state == ChoreState.PENDING
@@ -50,9 +50,9 @@ class TestUnloadWashingLifecycle:
         # 2. Power drops below threshold, cooldown elapses → trigger DONE → chore DUE
         hass.states.set("sensor.washing_machine_plug_power", "1.0")
         hass.states.set("sensor.washing_machine_plug_current", "0.01")
-        chore.trigger._evaluate_power(hass)
+        chore.trigger.detector._evaluate_power(hass)
         # Simulate cooldown elapsed
-        chore.trigger._power_dropped_at = dt_util.utcnow() - timedelta(minutes=6)
+        chore.trigger.detector._power_dropped_at = dt_util.utcnow() - timedelta(minutes=6)
         chore.evaluate(hass)
         assert chore.trigger.state == SubState.DONE
         assert chore.state == ChoreState.DUE
@@ -190,8 +190,8 @@ class TestWalkFayMorningLifecycle:
     def test_presence_cycle_uses_binary_sensor_states(self):
         """Binary sensor entity should use off/on states."""
         chore = Chore(daily_presence_config())
-        assert chore.completion._away_state == "off"
-        assert chore.completion._home_state == "on"
+        assert chore.completion.detector._away_state == "off"
+        assert chore.completion.detector._home_state == "on"
 
 
 class TestWalkFayAfternoonLifecycle:
@@ -274,7 +274,7 @@ class TestCollectClothesRackLifecycle:
         assert chore.state == ChoreState.PENDING
 
         # 2. Duration elapses (48h) → trigger DONE → chore DUE
-        chore.trigger._state_since = dt_util.utcnow() - timedelta(hours=49)
+        chore.trigger.detector._state_since = dt_util.utcnow() - timedelta(hours=49)
         chore.evaluate(hass)
         assert chore.trigger.state == SubState.DONE
         assert chore.state == ChoreState.DUE
@@ -299,7 +299,7 @@ class TestCollectClothesRackLifecycle:
         hass.states.set("binary_sensor.clothes_rack_contact", "on")
         chore.evaluate(hass)
         # Only 10 hours elapsed
-        chore.trigger._state_since = dt_util.utcnow() - timedelta(hours=10)
+        chore.trigger.detector._state_since = dt_util.utcnow() - timedelta(hours=10)
         chore.evaluate(hass)
         assert chore.trigger.state == SubState.ACTIVE
         assert chore.state == ChoreState.PENDING
@@ -335,8 +335,8 @@ class TestTakeBinsOutLifecycle:
     def test_presence_cycle_uses_person_states(self):
         """person.* entity should use not_home/home states."""
         chore = Chore(state_change_presence_config())
-        assert chore.completion._away_state == "not_home"
-        assert chore.completion._home_state == "home"
+        assert chore.completion.detector._away_state == "not_home"
+        assert chore.completion.detector._home_state == "home"
 
 
 class TestOpenWindowHumidityLifecycle:
@@ -418,7 +418,7 @@ class TestPersistenceRoundTrip:
         chore2 = Chore(duration_contact_cycle_config())
         chore2.restore_state(snap)
         assert chore2.trigger.state == SubState.ACTIVE
-        assert chore2.trigger._state_since is not None
+        assert chore2.trigger.detector._state_since is not None
 
 
 class TestForceActionsInterruptLifecycle:

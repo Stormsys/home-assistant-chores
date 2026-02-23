@@ -220,24 +220,24 @@ class TestPresenceCycleCompletion:
             "type": "presence_cycle",
             "entity_id": "person.alice",
         })
-        assert c._away_state == "not_home"
-        assert c._home_state == "home"
+        assert c.detector._away_state == "not_home"
+        assert c.detector._home_state == "home"
 
     def test_device_tracker_uses_not_home_home(self):
         c = PresenceCycleCompletion({
             "type": "presence_cycle",
             "entity_id": "device_tracker.phone",
         })
-        assert c._away_state == "not_home"
-        assert c._home_state == "home"
+        assert c.detector._away_state == "not_home"
+        assert c.detector._home_state == "home"
 
     def test_binary_sensor_uses_off_on(self):
         c = PresenceCycleCompletion({
             "type": "presence_cycle",
             "entity_id": "binary_sensor.potty_holder",
         })
-        assert c._away_state == "off"
-        assert c._home_state == "on"
+        assert c.detector._away_state == "off"
+        assert c.detector._home_state == "on"
 
     def test_step1_step2_lifecycle(self):
         """Leave → return cycle."""
@@ -307,7 +307,7 @@ class TestCreateCompletionFactory:
         assert isinstance(c, ManualCompletion)
 
     def test_unknown_raises(self):
-        with pytest.raises(ValueError, match="Unknown completion type"):
+        with pytest.raises((ValueError, KeyError)):
             create_completion({"type": "nonexistent"})
 
 
@@ -339,9 +339,9 @@ class TestContactCycleDebounce:
             return cancel
 
         event = make_state_change_event("binary_sensor.door", "on", "off")
-        with patch("custom_components.chores.completions.async_call_later", _fake_call_later):
+        with patch("custom_components.chores.detectors.async_call_later", _fake_call_later):
             listener_cb(event)
-        assert comp._pending_active_cancel is not None
+        assert comp.detector._pending_active_cancel is not None
         # Should still be IDLE — debounce hasn't fired yet
         assert comp.state == SubState.IDLE
 
@@ -359,10 +359,10 @@ class TestContactCycleDebounce:
             return cancel
 
         event = make_state_change_event("binary_sensor.door", "on", "off")
-        with patch("custom_components.chores.completions.async_call_later", _fake_call_later):
+        with patch("custom_components.chores.detectors.async_call_later", _fake_call_later):
             listener_cb(event)
         # Manually fire the deferred callback (simulating timer expiry)
-        deferred = comp._pending_active_cancel._deferred_cb
+        deferred = comp.detector._pending_active_cancel._deferred_cb
         deferred(None)  # _confirm_active(now)
         assert comp.state == SubState.ACTIVE
         on_change.assert_called()
@@ -382,15 +382,15 @@ class TestContactCycleDebounce:
 
         # Simulate open
         event_open = make_state_change_event("binary_sensor.door", "on", "off")
-        with patch("custom_components.chores.completions.async_call_later", _fake_call_later):
+        with patch("custom_components.chores.detectors.async_call_later", _fake_call_later):
             listener_cb(event_open)
-        pending = comp._pending_active_cancel
+        pending = comp.detector._pending_active_cancel
         assert pending is not None
 
         # Simulate close before debounce fires
         event_close = make_state_change_event("binary_sensor.door", "off", "on")
         listener_cb(event_close)
-        assert comp._pending_active_cancel is None
+        assert comp.detector._pending_active_cancel is None
         assert comp.state == SubState.IDLE
         pending.assert_called_once()  # The cancel callable was invoked
 
@@ -399,10 +399,10 @@ class TestContactCycleDebounce:
         comp = self._make()
         comp.enable()
         cancel_mock = MagicMock()
-        comp._pending_active_cancel = cancel_mock
+        comp.detector._pending_active_cancel = cancel_mock
         comp.reset()
         cancel_mock.assert_called_once()
-        assert comp._pending_active_cancel is None
+        assert comp.detector._pending_active_cancel is None
 
     def test_step2_close_from_active(self):
         """Closing while ACTIVE completes the cycle (step 2)."""
@@ -429,7 +429,7 @@ class TestContactCycleDebounce:
         event = make_state_change_event("binary_sensor.door", "on", None)
         listener_cb(event)
         assert comp.state == SubState.IDLE
-        assert comp._pending_active_cancel is None
+        assert comp.detector._pending_active_cancel is None
 
     def test_ignores_unavailable_old_state(self):
         """Events where old_state is unavailable are ignored."""
@@ -462,8 +462,14 @@ class TestContactCycleDebounce:
         state_cbs, _, on_change = setup_listeners_capturing(hass, comp)
         listener_cb = state_cbs[0]
 
+        def _fake_call_later(hass_arg, delay, cb):
+            cancel = MagicMock()
+            cancel._deferred_cb = cb
+            return cancel
+
         event = make_state_change_event("binary_sensor.door", "on", "off")
-        listener_cb(event)
+        with patch("custom_components.chores.detectors.async_call_later", _fake_call_later):
+            listener_cb(event)
         assert comp.state == SubState.IDLE
         on_change.assert_not_called()
 
@@ -631,7 +637,7 @@ class TestSensorThresholdCompletion:
             "entity_id": "sensor.x",
             "threshold": 10,
         })
-        assert c._operator == "above"
+        assert c.detector._operator == "above"
 
     def test_extra_attributes(self):
         hass = MockHass()

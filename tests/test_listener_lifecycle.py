@@ -49,10 +49,10 @@ class TestPowerCycleListenerLifecycle:
         trigger = PowerCycleTrigger(config)
         hass = MockHass()
         setup_listeners_capturing(hass, trigger)
-        assert len(trigger._listeners) == 1
-        unsub = trigger._listeners[0]
+        assert len(trigger.detector._listeners) == 1
+        unsub = trigger.detector._listeners[0]
         trigger.async_remove_listeners()
-        assert len(trigger._listeners) == 0
+        assert len(trigger.detector._listeners) == 0
         unsub.assert_called_once()
 
     def test_setup_no_sensors_no_listeners(self):
@@ -101,7 +101,7 @@ class TestStateChangeListenerLifecycle:
         hass = MockHass()
         setup_listeners_capturing(hass, trigger)
         trigger.async_remove_listeners()
-        assert len(trigger._listeners) == 0
+        assert len(trigger.detector._listeners) == 0
 
     def test_listener_fires_on_from_to_transition(self):
         config = {
@@ -151,7 +151,7 @@ class TestDailyTriggerListenerLifecycle:
         trigger = DailyTrigger(config)
         hass = MockHass()
         setup_listeners_capturing(hass, trigger)
-        unsubs = list(trigger._listeners)
+        unsubs = list(trigger.detector._listeners) + list(trigger._gate._listeners)
         assert len(unsubs) == 2
         trigger.async_remove_listeners()
         for unsub in unsubs:
@@ -206,6 +206,7 @@ class TestDailyTriggerListenerLifecycle:
         assert trigger.state == SubState.ACTIVE
 
         # Gate met → DONE
+        hass.states.set("binary_sensor.door", "on")
         event = make_state_change_event("binary_sensor.door", "on", "off")
         gate_cb(event)
         assert trigger.state == SubState.DONE
@@ -274,10 +275,10 @@ class TestContactCompletionListenerLifecycle:
         comp = ContactCompletion({"type": "contact", "entity_id": "binary_sensor.door"})
         hass = MockHass()
         setup_listeners_capturing(hass, comp)
-        assert len(comp._listeners) == 1
-        unsub = comp._listeners[0]
+        assert len(comp.detector._listeners) == 1
+        unsub = comp.detector._listeners[0]
         comp.async_remove_listeners()
-        assert len(comp._listeners) == 0
+        assert len(comp.detector._listeners) == 0
         unsub.assert_called_once()
 
     def test_listener_fires_done_on_contact_open(self):

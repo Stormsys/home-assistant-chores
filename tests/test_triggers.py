@@ -50,37 +50,37 @@ class TestPowerCycleTrigger:
         t = self._make()
         hass.states.set("sensor.plug_power", "15.0")
         hass.states.set("sensor.plug_current", "0.01")
-        assert t._is_above_threshold(hass) is True
+        assert t.detector._is_above_threshold(hass) is True
 
     def test_above_threshold_current(self):
         hass = MockHass()
         t = self._make()
         hass.states.set("sensor.plug_power", "5.0")
         hass.states.set("sensor.plug_current", "0.1")
-        assert t._is_above_threshold(hass) is True
+        assert t.detector._is_above_threshold(hass) is True
 
     def test_below_threshold(self):
         hass = MockHass()
         t = self._make()
         hass.states.set("sensor.plug_power", "5.0")
         hass.states.set("sensor.plug_current", "0.01")
-        assert t._is_above_threshold(hass) is False
+        assert t.detector._is_above_threshold(hass) is False
 
     def test_all_unavailable_returns_none(self):
         hass = MockHass()
         t = self._make()
         hass.states.set("sensor.plug_power", "unavailable")
         hass.states.set("sensor.plug_current", "unknown")
-        assert t._is_above_threshold(hass) is None
+        assert t.detector._is_above_threshold(hass) is None
 
     def test_power_rise_goes_active(self):
         hass = MockHass()
         t = self._make()
         hass.states.set("sensor.plug_power", "15.0")
         hass.states.set("sensor.plug_current", "0.1")
-        t._evaluate_power(hass)
+        t.detector._evaluate_power(hass)
         assert t.state == SubState.ACTIVE
-        assert t._machine_running is True
+        assert t.detector._machine_running is True
 
     @freeze_time("2025-06-15 10:00:00", tz_offset=0)
     def test_cooldown_not_elapsed(self):
@@ -89,12 +89,12 @@ class TestPowerCycleTrigger:
         # Power rise
         hass.states.set("sensor.plug_power", "15.0")
         hass.states.set("sensor.plug_current", "0.1")
-        t._evaluate_power(hass)
+        t.detector._evaluate_power(hass)
         assert t.state == SubState.ACTIVE
         # Power drops
         hass.states.set("sensor.plug_power", "1.0")
         hass.states.set("sensor.plug_current", "0.01")
-        t._evaluate_power(hass)
+        t.detector._evaluate_power(hass)
         # Evaluate should not complete yet (0 seconds elapsed)
         t.evaluate(hass)
         assert t.state == SubState.ACTIVE
@@ -105,13 +105,13 @@ class TestPowerCycleTrigger:
         # Power rise
         hass.states.set("sensor.plug_power", "15.0")
         hass.states.set("sensor.plug_current", "0.1")
-        t._evaluate_power(hass)
+        t.detector._evaluate_power(hass)
         # Power drops
         hass.states.set("sensor.plug_power", "1.0")
         hass.states.set("sensor.plug_current", "0.01")
-        t._evaluate_power(hass)
+        t.detector._evaluate_power(hass)
         # Manually set power_dropped_at to 6 minutes ago
-        t._power_dropped_at = dt_util.utcnow() - timedelta(minutes=6)
+        t.detector._power_dropped_at = dt_util.utcnow() - timedelta(minutes=6)
         t.evaluate(hass)
         assert t.state == SubState.DONE
 
@@ -121,34 +121,34 @@ class TestPowerCycleTrigger:
         # Power rise
         hass.states.set("sensor.plug_power", "15.0")
         hass.states.set("sensor.plug_current", "0.1")
-        t._evaluate_power(hass)
+        t.detector._evaluate_power(hass)
         # All unavailable
         hass.states.set("sensor.plug_power", "unavailable")
         hass.states.set("sensor.plug_current", "unavailable")
-        t._evaluate_power(hass)
-        assert t._power_dropped_at is None  # Cooldown NOT started
+        t.detector._evaluate_power(hass)
+        assert t.detector._power_dropped_at is None  # Cooldown NOT started
 
     def test_reset(self):
         hass = MockHass()
         t = self._make()
         hass.states.set("sensor.plug_power", "15.0")
         hass.states.set("sensor.plug_current", "0.1")
-        t._evaluate_power(hass)
+        t.detector._evaluate_power(hass)
         assert t.state == SubState.ACTIVE
         t.reset()
         assert t.state == SubState.IDLE
-        assert t._machine_running is False
-        assert t._power_dropped_at is None
+        assert t.detector._machine_running is False
+        assert t.detector._power_dropped_at is None
 
     def test_snapshot_restore(self):
         hass = MockHass()
         t = self._make()
         hass.states.set("sensor.plug_power", "15.0")
         hass.states.set("sensor.plug_current", "0.1")
-        t._evaluate_power(hass)
+        t.detector._evaluate_power(hass)
         hass.states.set("sensor.plug_power", "1.0")
         hass.states.set("sensor.plug_current", "0.01")
-        t._evaluate_power(hass)
+        t.detector._evaluate_power(hass)
         snap = t.snapshot_state()
         assert snap["state"] == "active"
         assert snap["machine_running"] is True
@@ -157,8 +157,8 @@ class TestPowerCycleTrigger:
         t2 = self._make()
         t2.restore_state(snap)
         assert t2.state == SubState.ACTIVE
-        assert t2._machine_running is True
-        assert t2._power_dropped_at is not None
+        assert t2.detector._machine_running is True
+        assert t2.detector._power_dropped_at is not None
 
     def test_extra_attributes(self):
         hass = MockHass()
@@ -252,7 +252,7 @@ class TestDailyTriggerNoGate:
     def test_initial_state(self):
         t = self._make()
         assert t.state == SubState.IDLE
-        assert t._time_fired_today is False
+        assert t.detector._time_fired_today is False
 
     def test_no_gate(self):
         t = self._make()
@@ -276,7 +276,7 @@ class TestDailyTriggerNoGate:
         t = self._make()
         t.evaluate(hass)
         assert t.state == SubState.DONE
-        assert t._time_fired_today is True
+        assert t.detector._time_fired_today is True
 
     @freeze_time("2025-06-15 07:00:00")
     def test_next_trigger_today_if_before(self):
@@ -295,21 +295,21 @@ class TestDailyTriggerNoGate:
     def test_reset(self):
         hass = MockHass()
         t = self._make()
-        t._time_fired_today = True
+        t.detector._time_fired_today = True
         t.set_state(SubState.DONE)
         t.reset()
         assert t.state == SubState.IDLE
-        assert t._time_fired_today is False
+        assert t.detector._time_fired_today is False
 
     def test_snapshot_restore(self):
         t = self._make()
-        t._time_fired_today = True
+        t.detector._time_fired_today = True
         t.set_state(SubState.DONE)
         snap = t.snapshot_state()
         assert snap["time_fired_today"] is True
         t2 = self._make()
         t2.restore_state(snap)
-        assert t2._time_fired_today is True
+        assert t2.detector._time_fired_today is True
         assert t2.state == SubState.DONE
 
 
@@ -430,10 +430,10 @@ class TestWeeklyTrigger:
     def test_reset(self):
         t = self._make()
         t.set_state(SubState.DONE)
-        t._time_fired_today = True
+        t.detector._time_fired_today = True
         t.reset()
         assert t.state == SubState.IDLE
-        assert t._time_fired_today is False
+        assert t.detector._time_fired_today is False
 
 
 # ── DurationTrigger ──────────────────────────────────────────────────
@@ -469,7 +469,7 @@ class TestDurationTrigger:
         hass.states.set("binary_sensor.clothes_rack_contact", "on")
         t.evaluate(hass)
         assert t.state == SubState.ACTIVE
-        assert t._state_since is not None
+        assert t.detector._state_since is not None
 
     @freeze_time("2025-06-15 10:00:00", tz_offset=0)
     def test_entity_not_in_target_stays_idle(self):
@@ -497,7 +497,7 @@ class TestDurationTrigger:
         t.evaluate(hass)
         assert t.state == SubState.ACTIVE
         # Set state_since to 49 hours ago
-        t._state_since = dt_util.utcnow() - timedelta(hours=49)
+        t.detector._state_since = dt_util.utcnow() - timedelta(hours=49)
         t.evaluate(hass)
         assert t.state == SubState.DONE
 
@@ -506,7 +506,7 @@ class TestDurationTrigger:
         t = self._make()
         hass.states.set("binary_sensor.clothes_rack_contact", "on")
         t.evaluate(hass)
-        t._state_since = dt_util.utcnow() - timedelta(hours=47)
+        t.detector._state_since = dt_util.utcnow() - timedelta(hours=47)
         t.evaluate(hass)
         assert t.state == SubState.ACTIVE
 
@@ -516,13 +516,13 @@ class TestDurationTrigger:
         hass.states.set("binary_sensor.clothes_rack_contact", "on")
         t.evaluate(hass)
         assert t.state == SubState.ACTIVE
-        state_since = t._state_since
+        state_since = t.detector._state_since
         # Entity becomes unavailable
         hass.states.set("binary_sensor.clothes_rack_contact", "unavailable")
         t.evaluate(hass)
         # Should still be ACTIVE with same state_since
         assert t.state == SubState.ACTIVE
-        assert t._state_since == state_since
+        assert t.detector._state_since == state_since
 
     def test_with_gate_stays_active_until_gate_met(self):
         hass = MockHass()
@@ -531,11 +531,11 @@ class TestDurationTrigger:
         hass.states.set("binary_sensor.some_gate", "off")
         t.evaluate(hass)
         # Set duration elapsed
-        t._state_since = dt_util.utcnow() - timedelta(hours=49)
+        t.detector._state_since = dt_util.utcnow() - timedelta(hours=49)
         t.evaluate(hass)
-        # Gate not met — should stay ACTIVE
+        # Gate not met — detector is DONE but stage reports ACTIVE (gate_holding)
         assert t.state == SubState.ACTIVE
-        assert t._duration_elapsed is True
+        assert t.detector.state == SubState.DONE
         # Gate met
         hass.states.set("binary_sensor.some_gate", "on")
         t.evaluate(hass)
@@ -550,7 +550,7 @@ class TestDurationTrigger:
         assert snap["state_since"] is not None
         t2 = self._make()
         t2.restore_state(snap)
-        assert t2._state_since is not None
+        assert t2.detector._state_since is not None
         assert t2.state == SubState.ACTIVE
 
     def test_reset(self):
@@ -560,8 +560,7 @@ class TestDurationTrigger:
         t.evaluate(hass)
         t.reset()
         assert t.state == SubState.IDLE
-        assert t._state_since is None
-        assert t._duration_elapsed is False
+        assert t.detector._state_since is None
 
     def test_extra_attributes(self):
         hass = MockHass()
@@ -613,7 +612,7 @@ class TestCreateTriggerFactory:
 
     def test_unknown_raises(self):
         import pytest
-        with pytest.raises(ValueError, match="Unknown trigger type"):
+        with pytest.raises(ValueError, match="Unknown detector type"):
             create_trigger({"type": "nonexistent"})
 
 
@@ -639,7 +638,7 @@ class TestPowerCycleBadSensorValues:
         hass.states.set("sensor.power", "foobar")
         hass.states.set("sensor.current", "0.01")
         trigger = self._make()
-        result = trigger._is_above_threshold(hass)
+        result = trigger.detector._is_above_threshold(hass)
         assert result is False  # readable but not above
 
     def test_non_numeric_current_state(self):
@@ -647,7 +646,7 @@ class TestPowerCycleBadSensorValues:
         hass.states.set("sensor.power", "5.0")
         hass.states.set("sensor.current", "not_a_number")
         trigger = self._make()
-        result = trigger._is_above_threshold(hass)
+        result = trigger.detector._is_above_threshold(hass)
         assert result is False
 
     def test_both_non_numeric(self):
@@ -655,7 +654,7 @@ class TestPowerCycleBadSensorValues:
         hass.states.set("sensor.power", "abc")
         hass.states.set("sensor.current", "xyz")
         trigger = self._make()
-        result = trigger._is_above_threshold(hass)
+        result = trigger.detector._is_above_threshold(hass)
         # Both readable (not unavailable) but both fail float(), so above=False
         assert result is False
 
@@ -664,7 +663,7 @@ class TestPowerCycleBadSensorValues:
         hass.states.set("sensor.power", "")
         hass.states.set("sensor.current", "0.01")
         trigger = self._make()
-        result = trigger._is_above_threshold(hass)
+        result = trigger.detector._is_above_threshold(hass)
         assert result is False
 
     def test_power_above_current_garbage(self):
@@ -673,7 +672,7 @@ class TestPowerCycleBadSensorValues:
         hass.states.set("sensor.power", "50.0")
         hass.states.set("sensor.current", "ERROR")
         trigger = self._make()
-        result = trigger._is_above_threshold(hass)
+        result = trigger.detector._is_above_threshold(hass)
         assert result is True
 
     def test_power_unavailable_current_above(self):
@@ -682,7 +681,7 @@ class TestPowerCycleBadSensorValues:
         hass.states.set("sensor.power", "unavailable")
         hass.states.set("sensor.current", "1.5")
         trigger = self._make()
-        result = trigger._is_above_threshold(hass)
+        result = trigger.detector._is_above_threshold(hass)
         assert result is True
 
     def test_power_unavailable_current_below(self):
@@ -690,7 +689,7 @@ class TestPowerCycleBadSensorValues:
         hass.states.set("sensor.power", "unavailable")
         hass.states.set("sensor.current", "0.01")
         trigger = self._make()
-        result = trigger._is_above_threshold(hass)
+        result = trigger.detector._is_above_threshold(hass)
         assert result is False
 
     def test_power_drop_then_rise_resets_cooldown(self):
@@ -701,20 +700,20 @@ class TestPowerCycleBadSensorValues:
         # Power high → ACTIVE
         hass.states.set("sensor.power", "50")
         hass.states.set("sensor.current", "0.01")
-        trigger._evaluate_power(hass)
+        trigger.detector._evaluate_power(hass)
         assert trigger.state == SubState.ACTIVE
-        assert trigger._machine_running is True
+        assert trigger.detector._machine_running is True
 
         # Power drops → cooldown starts
         hass.states.set("sensor.power", "1")
-        trigger._evaluate_power(hass)
-        assert trigger._power_dropped_at is not None
+        trigger.detector._evaluate_power(hass)
+        assert trigger.detector._power_dropped_at is not None
 
         # Power rises again → cooldown cancelled
         hass.states.set("sensor.power", "50")
-        trigger._evaluate_power(hass)
-        assert trigger._power_dropped_at is None
-        assert trigger._machine_running is True
+        trigger.detector._evaluate_power(hass)
+        assert trigger.detector._power_dropped_at is None
+        assert trigger.detector._machine_running is True
 
 
 # ── DurationTrigger startup recovery with persisted _state_since ──────
@@ -735,12 +734,12 @@ class TestDurationTriggerStartupRecovery:
 
         # Simulate persisted state_since from 2 hours ago (timezone-aware)
         two_hours_ago = datetime(2025, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
-        trigger._state_since = two_hours_ago
+        trigger.detector._state_since = two_hours_ago
 
         with freeze_time("2025-01-15 12:30:00", tz_offset=0):
             trigger.evaluate(hass)
             # Should use persisted _state_since, not overwrite with now
-            assert trigger._state_since == two_hours_ago
+            assert trigger.detector._state_since == two_hours_ago
             # 2.5 hours > 1 hour → should be DONE
             assert trigger.state == SubState.DONE
 
@@ -760,7 +759,7 @@ class TestDurationTriggerStartupRecovery:
             trigger.evaluate(hass)
             assert trigger.state == SubState.ACTIVE
             # _state_since should be set to now
-            assert trigger._state_since is not None
+            assert trigger.detector._state_since is not None
 
     def test_startup_entity_unavailable_stays_idle(self):
         """If entity is unavailable on startup, stay IDLE."""
@@ -798,7 +797,7 @@ class TestDurationTriggerStartupRecovery:
         with freeze_time("2025-01-15 13:00:00"):
             trigger.evaluate(hass)
             assert trigger.state == SubState.IDLE
-            assert trigger._state_since is None
+            assert trigger.detector._state_since is None
 
     def test_safety_check_ignores_unavailable(self):
         """Unavailable during ACTIVE doesn't reset the timer."""
@@ -815,7 +814,7 @@ class TestDurationTriggerStartupRecovery:
         with freeze_time("2025-01-15 12:00:00"):
             trigger.evaluate(hass)
             assert trigger.state == SubState.ACTIVE
-            state_since = trigger._state_since
+            state_since = trigger.detector._state_since
 
         # Entity goes unavailable
         hass.states.set("binary_sensor.contact", "unavailable")
@@ -823,7 +822,7 @@ class TestDurationTriggerStartupRecovery:
             trigger.evaluate(hass)
             # Should stay ACTIVE and preserve _state_since
             assert trigger.state == SubState.ACTIVE
-            assert trigger._state_since == state_since
+            assert trigger.detector._state_since == state_since
 
 
 # ── DurationTrigger listener startup filtering ────────────────────────
@@ -879,7 +878,7 @@ class TestDurationTriggerListenerFiltering:
         }
         trigger = DurationTrigger(config)
         trigger.set_state(SubState.ACTIVE)
-        trigger._state_since = datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        trigger.detector._state_since = datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
         hass = MockHass()
         state_cbs, _, _ = setup_listeners_capturing(hass, trigger)
         listener_cb = state_cbs[0]
@@ -888,7 +887,7 @@ class TestDurationTriggerListenerFiltering:
         listener_cb(event)
         # Should stay ACTIVE — unavailable ignored
         assert trigger.state == SubState.ACTIVE
-        assert trigger._state_since is not None
+        assert trigger.detector._state_since is not None
 
     def test_ignores_attribute_only_change(self):
         from conftest import setup_listeners_capturing
@@ -901,7 +900,7 @@ class TestDurationTriggerListenerFiltering:
         }
         trigger = DurationTrigger(config)
         trigger.set_state(SubState.ACTIVE)
-        trigger._state_since = datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        trigger.detector._state_since = datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
         hass = MockHass()
         state_cbs, _, _ = setup_listeners_capturing(hass, trigger)
         listener_cb = state_cbs[0]
@@ -941,7 +940,7 @@ class TestDurationTriggerListenerFiltering:
         }
         trigger = DurationTrigger(config)
         trigger.set_state(SubState.ACTIVE)
-        trigger._state_since = datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        trigger.detector._state_since = datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
         hass = MockHass()
         state_cbs, _, on_change = setup_listeners_capturing(hass, trigger)
         listener_cb = state_cbs[0]
@@ -949,5 +948,5 @@ class TestDurationTriggerListenerFiltering:
         event = make_state_change_event("binary_sensor.contact", "off", "on")
         listener_cb(event)
         assert trigger.state == SubState.IDLE
-        assert trigger._state_since is None
+        assert trigger.detector._state_since is None
         on_change.assert_called_once()

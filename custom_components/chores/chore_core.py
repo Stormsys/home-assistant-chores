@@ -13,7 +13,7 @@ from typing import Any
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.util import dt as dt_util
 
-from .completions import BaseCompletion, create_completion
+from .completions import CompletionStage, create_completion
 from .const import (
     ATTR_CHORE_ID,
     ATTR_CHORE_NAME,
@@ -36,7 +36,7 @@ from .const import (
     SubState,
 )
 from .resets import BaseReset, create_reset
-from .triggers import BaseTrigger, DailyTrigger, WeeklyTrigger, create_trigger
+from .triggers import TriggerStage, create_trigger
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -55,8 +55,8 @@ class Chore:
         self._icon: str = config.get("icon", "mdi:checkbox-marked-circle-outline")
 
         # Build components from config
-        self._trigger: BaseTrigger = create_trigger(config["trigger"])
-        self._completion: BaseCompletion = create_completion(
+        self._trigger: TriggerStage = create_trigger(config["trigger"])
+        self._completion: CompletionStage = create_completion(
             config.get("completion", {"type": "manual"})
         )
         self._reset: BaseReset = create_reset(
@@ -137,11 +137,11 @@ class Chore:
         return self._forced
 
     @property
-    def trigger(self) -> BaseTrigger:
+    def trigger(self) -> TriggerStage:
         return self._trigger
 
     @property
-    def completion(self) -> BaseCompletion:
+    def completion(self) -> CompletionStage:
         return self._completion
 
     @property
@@ -159,9 +159,7 @@ class Chore:
     @property
     def next_due(self) -> datetime | None:
         """Next predicted due time (daily/weekly triggers only)."""
-        if isinstance(self._trigger, (DailyTrigger, WeeklyTrigger)):
-            return self._trigger.next_trigger_datetime
-        return None
+        return self._trigger.next_trigger_datetime
 
     @property
     def state_label(self) -> str:

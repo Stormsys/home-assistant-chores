@@ -321,10 +321,10 @@ def setup_listeners_capturing(hass, component, on_change=None):
         cancel._deferred_cb = cb
         return cancel
 
-    with patch("custom_components.chores.triggers.async_track_state_change_event", _fake_track_state), \
-         patch("custom_components.chores.triggers.async_track_time_change", _fake_track_time), \
-         patch("custom_components.chores.completions.async_track_state_change_event", _fake_track_state), \
-         patch("custom_components.chores.completions.async_call_later", _fake_call_later):
+    with patch("custom_components.chores.detectors.async_track_state_change_event", _fake_track_state), \
+         patch("custom_components.chores.detectors.async_track_time_change", _fake_track_time), \
+         patch("custom_components.chores.detectors.async_call_later", _fake_call_later), \
+         patch("custom_components.chores.gate.async_track_state_change_event", _fake_track_state):
         component.async_setup_listeners(hass, on_change)
 
     return state_listeners, time_listeners, on_change
