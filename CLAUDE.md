@@ -137,6 +137,8 @@ Key constants:
 - `DOMAIN = "chores"`
 - `PLATFORMS = ["binary_sensor", "sensor", "button"]`
 - `CONF_LOGBOOK = "logbook"` — integration-level YAML key to enable/disable all logbook entries (default `true`)
+- `CONF_NOTIFY_AT`, `CONF_NOTIFY_AFTER_MINUTES` — per-chore notification timing config keys
+- `ATTR_NOTIFY_AFTER`, `ATTR_NOTIFY_AT`, `ATTR_NOTIFY_AFTER_MINUTES` — notification timing attributes on main sensor
 - `DEFAULT_ICON`, `DEFAULT_COOLDOWN_MINUTES`, `DEFAULT_POWER_THRESHOLD`, `DEFAULT_CURRENT_THRESHOLD`
 
 Events fired:
@@ -329,6 +331,9 @@ chores:
       icon_due: mdi:...
       icon_started: mdi:...
       icon_completed: mdi:...
+
+      notify_at: "21:00"     # Optional. Earliest time of day to notify.
+      notify_after_minutes: 30  # Optional. Minutes after due before notifying.
 
       trigger:               # Required. See trigger types below.
         type: daily
@@ -576,7 +581,7 @@ Trigger and completion sensor names can be overridden via the YAML `sensor: { na
 pytest tests/ -v --tb=short
 ```
 
-All 472 tests should pass. Tests run on every push and PR to `main` via GitHub Actions (`.github/workflows/tests.yml`).
+All 488 tests should pass. Tests run on every push and PR to `main` via GitHub Actions (`.github/workflows/tests.yml`).
 
 ### CI Setup
 
@@ -618,7 +623,7 @@ After any code change, run:
 pytest tests/ -v --tb=short
 ```
 
-**All 472 tests must pass before committing.** If you added a new component type, trigger type, or entity, you must also add tests (see "Keeping Tests Up to Date" below).
+**All 488 tests must pass before committing.** If you added a new component type, trigger type, or entity, you must also add tests (see "Keeping Tests Up to Date" below).
 
 ### Keeping Tests Up to Date
 

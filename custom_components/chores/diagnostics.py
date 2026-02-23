@@ -48,6 +48,8 @@ async def async_get_config_entry_diagnostics(
             "due_since": chore.due_since.isoformat() if chore.due_since else None,
             "last_completed": chore.last_completed.isoformat() if chore.last_completed else None,
             "forced": chore.forced,
+            "notify_at": chore.notify_at_str,
+            "notify_after_minutes": chore.notify_after_minutes,
             "completion_history_count": len(chore.completion_history),
         }
 

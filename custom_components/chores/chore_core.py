@@ -7,7 +7,7 @@ trigger/completion/reset modules.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, time, timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant, callback
@@ -27,6 +27,9 @@ from .const import (
     ATTR_FORCED,
     ATTR_LAST_COMPLETED,
     ATTR_NEXT_DUE,
+    ATTR_NOTIFY_AFTER,
+    ATTR_NOTIFY_AFTER_MINUTES,
+    ATTR_NOTIFY_AT,
     ATTR_STATE_ENTERED_AT,
     ATTR_STATE_LABEL,
     ATTR_TRIGGER_STATE,
@@ -84,6 +87,10 @@ class Chore:
             ChoreState.STARTED: config.get("icon_started") or default_icon,
             ChoreState.COMPLETED: config.get("icon_completed") or default_icon,
         }
+
+        # Notification timing config
+        self._notify_at: time | None = config.get("notify_at")
+        self._notify_after_minutes: int | None = config.get("notify_after_minutes")
 
         # Resolved entity_id for completion button (manual only); set by coordinator
         self._completion_button_entity_id: str | None = None
@@ -160,6 +167,46 @@ class Chore:
     def next_due(self) -> datetime | None:
         """Next predicted due time (detectors that support it, e.g. daily/weekly)."""
         return self._trigger.next_trigger_datetime
+
+    @property
+    def notify_at(self) -> time | None:
+        """Return configured notify_at time, or None."""
+        return self._notify_at
+
+    @property
+    def notify_at_str(self) -> str | None:
+        """Return notify_at as HH:MM string, or None."""
+        return self._notify_at.strftime("%H:%M") if self._notify_at else None
+
+    @property
+    def notify_after_minutes(self) -> int | None:
+        """Return configured notify_after_minutes, or None."""
+        return self._notify_after_minutes
+
+    @property
+    def notify_after(self) -> datetime | None:
+        """Compute earliest notification time, or None."""
+        if self._state not in (ChoreState.DUE, ChoreState.STARTED):
+            return None
+        if self._notify_at is None and self._notify_after_minutes is None:
+            return None
+        if self._due_since is None:
+            return None
+
+        candidates: list[datetime] = []
+        if self._notify_after_minutes is not None:
+            candidates.append(self._due_since + timedelta(minutes=self._notify_after_minutes))
+        if self._notify_at is not None:
+            notify_dt = self._due_since.replace(
+                hour=self._notify_at.hour,
+                minute=self._notify_at.minute,
+                second=0,
+                microsecond=0,
+            )
+            if notify_dt <= self._due_since:
+                notify_dt += timedelta(days=1)
+            candidates.append(notify_dt)
+        return max(candidates)
 
     @property
     def state_label(self) -> str:
@@ -329,6 +376,9 @@ class Chore:
             ATTR_COMPLETION_STATE: self._completion.state.value,
             ATTR_COMPLETION_TYPE: self._completion.completion_type.value,
             ATTR_FORCED: self._forced,
+            ATTR_NOTIFY_AFTER: self.notify_after.isoformat() if self.notify_after else None,
+            ATTR_NOTIFY_AT: self.notify_at_str,
+            ATTR_NOTIFY_AFTER_MINUTES: self._notify_after_minutes,
         }
         if self._completion.completion_type == CompletionType.MANUAL and self._completion_button_entity_id:
             result[ATTR_COMPLETION_BUTTON] = self._completion_button_entity_id

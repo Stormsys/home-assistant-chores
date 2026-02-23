@@ -133,6 +133,13 @@ ATTR_STATE_LABEL: Final = "state_label"
 ATTR_COMPLETION_BUTTON: Final = "completion_button"
 ATTR_DESCRIPTION: Final = "description"
 ATTR_CONTEXT: Final = "context"
+ATTR_NOTIFY_AFTER: Final = "notify_after"
+ATTR_NOTIFY_AT: Final = "notify_at"
+ATTR_NOTIFY_AFTER_MINUTES: Final = "notify_after_minutes"
+
+# ── Notification config keys ──────────────────────────────────────
+CONF_NOTIFY_AT: Final = "notify_at"
+CONF_NOTIFY_AFTER_MINUTES: Final = "notify_after_minutes"
 
 # ── Defaults ────────────────────────────────────────────────────────
 DEFAULT_ICON: Final = "mdi:checkbox-marked-circle-outline"

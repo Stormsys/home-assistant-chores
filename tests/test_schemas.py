@@ -416,3 +416,62 @@ class TestChoreSchemaDefaults:
         config = {"id": "test", "name": "Test"}
         with pytest.raises(vol.Invalid):
             CHORE_SCHEMA(config)
+
+
+# ── Notification timing schema ────────────────────────────────────────
+
+
+class TestNotifySchema:
+    def test_notify_at_valid(self):
+        config = {
+            "id": "test",
+            "name": "Test",
+            "notify_at": "21:00",
+            "trigger": {"type": "daily", "time": "08:00"},
+        }
+        result = CHORE_SCHEMA(config)
+        from datetime import time
+        assert result["notify_at"] == time(21, 0)
+
+    def test_notify_after_minutes_valid(self):
+        config = {
+            "id": "test",
+            "name": "Test",
+            "notify_after_minutes": 30,
+            "trigger": {"type": "daily", "time": "08:00"},
+        }
+        result = CHORE_SCHEMA(config)
+        assert result["notify_after_minutes"] == 30
+
+    def test_notify_after_minutes_zero_valid(self):
+        config = {
+            "id": "test",
+            "name": "Test",
+            "notify_after_minutes": 0,
+            "trigger": {"type": "daily", "time": "08:00"},
+        }
+        result = CHORE_SCHEMA(config)
+        assert result["notify_after_minutes"] == 0
+
+    def test_notify_after_minutes_rejects_negative(self):
+        config = {
+            "id": "test",
+            "name": "Test",
+            "notify_after_minutes": -1,
+            "trigger": {"type": "daily", "time": "08:00"},
+        }
+        with pytest.raises(vol.Invalid):
+            CHORE_SCHEMA(config)
+
+    def test_both_notify_fields(self):
+        config = {
+            "id": "test",
+            "name": "Test",
+            "notify_at": "21:00",
+            "notify_after_minutes": 180,
+            "trigger": {"type": "daily", "time": "08:00"},
+        }
+        result = CHORE_SCHEMA(config)
+        from datetime import time
+        assert result["notify_at"] == time(21, 0)
+        assert result["notify_after_minutes"] == 180

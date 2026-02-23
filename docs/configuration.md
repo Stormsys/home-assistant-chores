@@ -28,6 +28,9 @@ chores:
         type: daily_reset | delay
         # ... type-specific options (see below)
 
+      notify_at: "21:00"           # optional — earliest time of day to notify
+      notify_after_minutes: 30     # optional — minutes after due before notifying
+
       state_labels:                # optional — custom display text per state
         inactive: "Idle"
         pending: "Waiting"
@@ -402,6 +405,65 @@ state_labels:
 ```
 
 If omitted, the raw state names (`inactive`, `pending`, `due`, `started`, `completed`) are used.
+
+---
+
+## Notification Timing
+
+Control **when** a chore should start being announced, independently of when it becomes due. Useful when a chore triggers early but announcements should only start later (e.g. "Feed Fay" is due at 6pm but announcements should only start at 9pm).
+
+Two optional fields, usable independently or together:
+
+```yaml
+chores:
+  chores:
+    - id: feed_fay
+      name: "Feed Fay"
+      notify_at: "21:00"              # don't announce before 9pm
+      notify_after_minutes: 180       # don't announce until 3 hours after due
+      trigger:
+        type: daily
+        time: "18:00"
+      completion:
+        type: manual
+```
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `notify_at` | No | — | Earliest time of day to notify (HH:MM, 24-hour). If due before this time, notifications wait until this time. If due after, waits until this time the next day. |
+| `notify_after_minutes` | No | — | Minutes after becoming due before notifications should start (integer, >= 0). |
+
+The main chore sensor exposes three attributes for automations:
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `notify_after` | ISO timestamp or `null` | Computed earliest notification time. `null` when chore is not `due`/`started`, or when neither field is configured. |
+| `notify_at` | `"HH:MM"` or `null` | Raw config value. |
+| `notify_after_minutes` | int or `null` | Raw config value. |
+
+When **both** fields are set, `notify_after` is the **later** of the two computed timestamps.
+
+**Example automation:**
+
+```yaml
+automation:
+  - alias: "Announce chores that need attention"
+    trigger:
+      - platform: time_pattern
+        minutes: "/10"
+    condition:
+      - condition: state
+        entity_id: binary_sensor.feed_fay_needs_attention
+        state: "on"
+      - condition: template
+        value_template: >
+          {% set na = state_attr('sensor.feed_fay_chore', 'notify_after') %}
+          {{ na is none or now() >= as_datetime(na) }}
+    action:
+      - service: tts.speak
+        data:
+          message: "Time to feed Fay"
+```
 
 ---
 

@@ -55,6 +55,10 @@ chores:
         time: "08:00"
       completion:
         type: manual
+
+      # Optional: delay announcements until a specific time or delay
+      notify_at: "21:00"           # don't announce before 9pm
+      notify_after_minutes: 30     # don't announce until 30 min after due
 ```
 
 Restart Home Assistant. You'll get a sensor, binary sensor, and control buttons for the chore.

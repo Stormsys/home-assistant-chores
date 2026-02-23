@@ -294,6 +294,10 @@ CHORE_SCHEMA = vol.Schema(
         vol.Optional("icon_due"): cv.icon,
         vol.Optional("icon_started"): cv.icon,
         vol.Optional("icon_completed"): cv.icon,
+        vol.Optional("notify_at"): cv.time,
+        vol.Optional("notify_after_minutes"): vol.All(
+            vol.Coerce(int), vol.Range(min=0)
+        ),
         vol.Required("trigger"): TRIGGER_SCHEMA,
         vol.Optional("completion", default={"type": "manual"}): COMPLETION_SCHEMA,
         vol.Optional("reset"): RESET_SCHEMA,
