@@ -15,10 +15,28 @@ This is a Home Assistant custom integration (`chores`) for tracking household ch
 
 ```
 home-assistant-chores/
+├── .github/workflows/tests.yml           # GitHub Actions CI — runs on push/PR to main
 ├── ARCHITECTURE.md                        # Detailed internal architecture docs
 ├── CLAUDE.md                              # This file
 ├── example_configuration.yaml            # Reference YAML config showing all trigger/completion types
 ├── hacs.json                              # HACS metadata
+├── pytest.ini                             # Pytest config (testpaths, asyncio_mode)
+├── requirements_test.txt                  # Test dependencies
+├── tests/
+│   ├── conftest.py            # HA module stubs, MockHass, 9 config builders
+│   ├── test_binary_sensor.py  # NeedsAttentionBinarySensor tests
+│   ├── test_button.py         # Force action button tests
+│   ├── test_chore_core.py     # Chore state machine tests
+│   ├── test_completions.py    # All 5 completion type tests + factory
+│   ├── test_const.py          # Enum and constant smoke tests
+│   ├── test_coordinator.py    # ChoresCoordinator tests
+│   ├── test_example_configs.py # Full lifecycle tests for all 9 example configs
+│   ├── test_logbook.py        # Logbook describe function tests
+│   ├── test_resets.py         # All 5 reset type tests + factory
+│   ├── test_schemas.py        # YAML voluptuous schema validation tests
+│   ├── test_sensor.py         # All 5 sensor entity tests
+│   ├── test_store.py          # ChoreStore persistence tests
+│   └── test_triggers.py       # All 5 trigger type tests + factory
 └── custom_components/
     └── chores/
         ├── __init__.py        # Integration setup, YAML schema, service registration
@@ -463,6 +481,8 @@ Fields that are **not** persisted (recalculated at runtime):
 3. Register in `TRIGGER_FACTORY`.
 4. Add a schema branch to `TRIGGER_SCHEMA` in `__init__.py`.
 5. Add a `_describe_pending` and `_describe_due` branch for the new type in `logbook.py`.
+6. Add tests: unit tests in `test_triggers.py`, describe tests in `test_logbook.py`, sensor defaults in `test_sensor.py`, enum count in `test_const.py`, schema validation in `test_schemas.py`.
+7. Add a config builder to `conftest.py` and a lifecycle test to `test_example_configs.py`.
 
 **Adding a new completion type:**
 1. Add value to `CompletionType` in `const.py`.
@@ -470,12 +490,15 @@ Fields that are **not** persisted (recalculated at runtime):
 3. Register in `COMPLETION_FACTORY`.
 4. Add a schema branch to `COMPLETION_SCHEMA` in `__init__.py`.
 5. Add a `_describe_started` and `_describe_completed` branch for the new type in `logbook.py`.
+6. Add tests: unit tests in `test_completions.py`, describe tests in `test_logbook.py`, sensor defaults in `test_sensor.py`, enum count in `test_const.py`, schema validation in `test_schemas.py`.
+7. Add a config builder to `conftest.py` and a lifecycle test to `test_example_configs.py`.
 
 **Adding a new reset type:**
 1. Add value to `ResetType` in `const.py`.
 2. Create a class extending `BaseReset` in `resets.py`.
 3. Register in `create_reset()` factory.
 4. Add a schema branch to `RESET_SCHEMA` in `__init__.py`.
+5. Add tests: unit tests in `test_resets.py`, enum count in `test_const.py`, schema validation in `test_schemas.py`.
 
 **Adding new persistent state fields:**
 - Either add them to the component's `_snapshot_internal()` / `_restore_internal()` methods, or store them in the store directly.
@@ -529,10 +552,76 @@ The `_attr_has_entity_name = True` pattern is used on all entity classes — HA 
 
 ---
 
-## Testing and Debugging
+## Testing
 
-There is no test suite in this repository. When making changes:
-- Test by loading the integration in a real or dev HA instance.
+### Running Tests
+
+```bash
+pytest tests/ -v --tb=short
+```
+
+All 344 tests should pass. Tests run on every push and PR to `main` via GitHub Actions (`.github/workflows/tests.yml`).
+
+### CI Setup
+
+The GitHub Actions workflow runs on Python 3.11 and 3.12. It installs `homeassistant` with `--no-deps` and then installs only the subset of HA runtime dependencies the test suite actually needs. Heavy dependencies (cryptography, jwt, websocket_api, auth) are stubbed out in `conftest.py` so the suite stays fast and portable.
+
+### Test Architecture
+
+Tests do **not** use `pytest-homeassistant-custom-component`. Instead, `tests/conftest.py` provides a lightweight stub layer:
+
+- **Stubbed HA modules:** `config_entries`, `update_coordinator`, entity platform bases (`SensorEntity`, `BinarySensorEntity`, `ButtonEntity`), device/entity registries. These are replaced with minimal stand-ins before any `custom_components` imports.
+- **Real HA modules used:** `homeassistant.core`, `homeassistant.util.dt`, `homeassistant.helpers.event`, `homeassistant.helpers.config_validation`, `homeassistant.helpers.storage`, `voluptuous`.
+- **`MockHass`** — lightweight mock with `MockStates` (get/set/remove) and `MockBus` (async_fire with event collection). Used by trigger, completion, and coordinator tests.
+- **9 config builder functions** — one per example configuration in `example_configuration.yaml`. These return fresh `dict` configs that match the validated YAML schemas.
+- **`freezegun`** — used for time-dependent tests (cooldowns, daily/weekly triggers, duration timers, resets).
+
+### Test File Map
+
+| Test file | What it covers | Key signal |
+|---|---|---|
+| `test_const.py` | Enums, event names, constants | Catches accidental renames or missing enum values |
+| `test_triggers.py` | All 5 trigger types + factory | Sub-state transitions, cooldown timers, gate logic, snapshot/restore |
+| `test_completions.py` | All 5 completion types + factory | Enable/disable, 1-step vs 2-step, entity auto-detection |
+| `test_resets.py` | All 5 reset types + factory | Time arithmetic, implicit defaults per trigger type |
+| `test_chore_core.py` | `Chore` state machine | All transitions, force actions, timestamps, completion history, persistence |
+| `test_schemas.py` | YAML voluptuous schemas | All 9 example configs validate; invalid configs rejected |
+| `test_example_configs.py` | **Full lifecycle integration** | Each of the 9 example configs exercised from INACTIVE → COMPLETED → INACTIVE |
+| `test_coordinator.py` | `ChoresCoordinator` | Event firing, force actions, state persistence, logbook flags |
+| `test_store.py` | `ChoreStore` | Load/save/get/set/remove round-trips |
+| `test_logbook.py` | Logbook describe functions | Every trigger/completion type produces a meaningful message |
+| `test_sensor.py` | All 5 sensor entities | Unique IDs, names, icons per sub-state, type-aware defaults |
+| `test_binary_sensor.py` | `NeedsAttentionBinarySensor` | ON when due/started, OFF otherwise |
+| `test_button.py` | 3 force action buttons | Unique IDs, `async_press` delegates to coordinator |
+
+### Verifying a Change
+
+After any code change, run:
+
+```bash
+pytest tests/ -v --tb=short
+```
+
+**All 344 tests must pass before committing.** If you added a new component type, trigger type, or entity, you must also add tests (see "Keeping Tests Up to Date" below).
+
+### Keeping Tests Up to Date
+
+When extending the integration, add tests alongside the code change. The table below shows which test files need updates for each kind of change:
+
+| Change | Test files to update |
+|---|---|
+| New trigger type | `test_triggers.py` (unit tests for the new class), `test_logbook.py` (new describe branches), `test_sensor.py` (new trigger sensor defaults), `test_const.py` (enum count), `test_schemas.py` (schema validation), add a new config builder to `conftest.py` and a lifecycle test to `test_example_configs.py` |
+| New completion type | `test_completions.py` (unit tests), `test_logbook.py` (new describe branches), `test_sensor.py` (completion sensor defaults), `test_const.py` (enum count), `test_schemas.py` (schema validation), add a new config builder to `conftest.py` and a lifecycle test to `test_example_configs.py` |
+| New reset type | `test_resets.py` (unit tests), `test_const.py` (enum count), `test_schemas.py` (schema validation) |
+| New entity | Corresponding `test_sensor.py` / `test_binary_sensor.py` / `test_button.py` |
+| New example config | Add config builder to `conftest.py`, add lifecycle test to `test_example_configs.py`, add schema test to `test_schemas.py` |
+| State machine change | `test_chore_core.py`, `test_example_configs.py` (lifecycle tests) |
+| New persistent field | `test_chore_core.py` (snapshot/restore), `test_store.py` if store format changes |
+| New service/event | `test_coordinator.py`, `test_const.py` |
+
+### Debugging
+
+For issues not caught by tests, use a real or dev HA instance:
 - Use HA's Developer Tools → Events to watch `chores.*` events.
 - Use Developer Tools → States to inspect entity attributes.
 - Enable debug logging with:
