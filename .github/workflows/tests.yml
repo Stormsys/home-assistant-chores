@@ -32,7 +32,7 @@ jobs:
           pip install \
             yarl aiohttp async-timeout python-slugify \
             ciso8601 orjson ulid-transform awesomeversion \
-            voluptuous-serialize async-interrupt
+            voluptuous-serialize async-interrupt jinja2
 
       - name: Run tests
         run: pytest tests/ -v --tb=short
