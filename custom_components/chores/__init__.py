@@ -107,6 +107,7 @@ TRIGGER_SCHEMA = vol.Any(
             vol.Required("duration_hours"): vol.All(
                 vol.Coerce(float), vol.Range(min=0, min_included=False)
             ),
+            vol.Optional("gate"): GATE_SCHEMA,
             vol.Optional("sensor"): SENSOR_DISPLAY_SCHEMA,
         }
     ),

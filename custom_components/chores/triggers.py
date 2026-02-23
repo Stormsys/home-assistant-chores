@@ -732,8 +732,15 @@ class DurationTrigger(BaseTrigger):
         self._duration_hours: float = config["duration_hours"]
         self._state_since: datetime | None = None
 
+        gate = config.get("gate")
+        self._gate_entity: str | None = gate.get("entity_id") if gate else None
+        self._gate_state: str | None = gate.get("state") if gate else None
+        self._has_gate: bool = self._gate_entity is not None
+        self._duration_elapsed: bool = False
+
     def _reset_internal(self) -> None:
         self._state_since = None
+        self._duration_elapsed = False
 
     def async_setup_listeners(
         self, hass: HomeAssistant, on_state_change: callback
@@ -764,7 +771,7 @@ class DurationTrigger(BaseTrigger):
                 self._state_since = dt_util.utcnow()
                 self.set_state(SubState.ACTIVE)
                 on_state_change()
-            elif new_val != self._target_state and self._state == SubState.ACTIVE:
+            elif new_val != self._target_state and self._state == SubState.ACTIVE and not self._duration_elapsed:
                 self._state_since = None
                 self.set_state(SubState.IDLE)
                 on_state_change()
@@ -773,6 +780,33 @@ class DurationTrigger(BaseTrigger):
             hass, [self._entity_id], _handle_state_change
         )
         self._listeners.append(unsub)
+
+        # Gate entity listener (if configured)
+        if self._gate_entity:
+
+            @callback
+            def _handle_gate(event: Event) -> None:
+                if self._state != SubState.ACTIVE or not self._duration_elapsed:
+                    return
+                new_state = event.data.get("new_state")
+                old_state = event.data.get("old_state")
+                if old_state is None or old_state.state in ("unavailable", "unknown"):
+                    return
+                if new_state and new_state.state == self._gate_state:
+                    self.set_state(SubState.DONE)
+                    on_state_change()
+
+            unsub_gate = async_track_state_change_event(
+                hass, [self._gate_entity], _handle_gate
+            )
+            self._listeners.append(unsub_gate)
+
+    def _is_gate_met(self, hass: HomeAssistant) -> bool:
+        """Check if the gate condition is currently met."""
+        if not self._gate_entity:
+            return True
+        state = hass.states.get(self._gate_entity)
+        return state is not None and state.state == self._gate_state
 
     def evaluate(self, hass: HomeAssistant) -> SubState:
         """Check duration timer on every poll.
@@ -796,21 +830,32 @@ class DurationTrigger(BaseTrigger):
                 self.set_state(SubState.ACTIVE)
 
         if self._state == SubState.ACTIVE and self._state_since is not None:
-            # Safety check — if the entity somehow left the target state
-            # between polls (and the listener missed it), reset. Treat
-            # unavailable/unknown as "still in target state" so transient
-            # connectivity blips don't clear the timer.
-            state = hass.states.get(self._entity_id)
-            if (
-                state
-                and state.state not in ("unknown", "unavailable")
-                and state.state != self._target_state
-            ):
-                self._state_since = None
-                self.set_state(SubState.IDLE)
-            else:
-                elapsed = (now - self._state_since).total_seconds()
-                if elapsed >= self._duration_hours * 3600:
+            if not self._duration_elapsed:
+                # Safety check — if the entity somehow left the target state
+                # between polls (and the listener missed it), reset. Treat
+                # unavailable/unknown as "still in target state" so transient
+                # connectivity blips don't clear the timer.
+                state = hass.states.get(self._entity_id)
+                if (
+                    state
+                    and state.state not in ("unknown", "unavailable")
+                    and state.state != self._target_state
+                ):
+                    self._state_since = None
+                    self.set_state(SubState.IDLE)
+                else:
+                    elapsed = (now - self._state_since).total_seconds()
+                    if elapsed >= self._duration_hours * 3600:
+                        self._duration_elapsed = True
+                        if self._has_gate:
+                            if self._is_gate_met(hass):
+                                self.set_state(SubState.DONE)
+                            # else stay ACTIVE (pending) until gate is met
+                        else:
+                            self.set_state(SubState.DONE)
+            elif self._has_gate:
+                # Duration already elapsed, waiting for gate
+                if self._is_gate_met(hass):
                     self.set_state(SubState.DONE)
 
         return self._state
@@ -833,16 +878,24 @@ class DurationTrigger(BaseTrigger):
             attrs["time_remaining_seconds"] = int(remaining)
         else:
             attrs["time_remaining_seconds"] = None
+        if self._gate_entity:
+            gate_state = hass.states.get(self._gate_entity)
+            attrs["gate_entity"] = self._gate_entity
+            attrs["gate_expected_state"] = self._gate_state
+            attrs["gate_current_state"] = gate_state.state if gate_state else None
+            attrs["gate_met"] = self._is_gate_met(hass)
         return attrs
 
     def _snapshot_internal(self) -> dict[str, Any]:
         return {
             "state_since": self._state_since.isoformat() if self._state_since else None,
+            "duration_elapsed": self._duration_elapsed,
         }
 
     def _restore_internal(self, data: dict[str, Any]) -> None:
         ss = data.get("state_since")
         self._state_since = dt_util.parse_datetime(ss) if ss else None
+        self._duration_elapsed = data.get("duration_elapsed", False)
 
 
 # ═══════════════════════════════════════════════════════════════════════
