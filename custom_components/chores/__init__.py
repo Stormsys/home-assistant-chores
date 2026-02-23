@@ -54,6 +54,7 @@ TRIGGER_SCHEMA = vol.Any(
             vol.Optional("power_threshold", default=10.0): cv.positive_float,
             vol.Optional("current_threshold", default=0.04): cv.positive_float,
             vol.Optional("cooldown_minutes", default=5): cv.positive_int,
+            vol.Optional("gate"): GATE_SCHEMA,
             vol.Optional("sensor"): SENSOR_DISPLAY_SCHEMA,
         }
     ),
@@ -64,6 +65,7 @@ TRIGGER_SCHEMA = vol.Any(
             vol.Required("entity_id"): cv.entity_id,
             vol.Required("from"): cv.string,
             vol.Required("to"): cv.string,
+            vol.Optional("gate"): GATE_SCHEMA,
             vol.Optional("sensor"): SENSOR_DISPLAY_SCHEMA,
         }
     ),
@@ -111,6 +113,60 @@ TRIGGER_SCHEMA = vol.Any(
             vol.Optional("sensor"): SENSOR_DISPLAY_SCHEMA,
         }
     ),
+    # ── Cross-stage detectors (primarily completion types, also usable as triggers)
+    # sensor_state
+    vol.Schema(
+        {
+            vol.Required("type"): "sensor_state",
+            vol.Required("entity_id"): cv.entity_id,
+            vol.Optional("state", default="on"): cv.string,
+            vol.Optional("gate"): GATE_SCHEMA,
+            vol.Optional("sensor"): SENSOR_DISPLAY_SCHEMA,
+        }
+    ),
+    # contact
+    vol.Schema(
+        {
+            vol.Required("type"): "contact",
+            vol.Required("entity_id"): cv.entity_id,
+            vol.Optional("gate"): GATE_SCHEMA,
+            vol.Optional("sensor"): SENSOR_DISPLAY_SCHEMA,
+        }
+    ),
+    # contact_cycle
+    vol.Schema(
+        {
+            vol.Required("type"): "contact_cycle",
+            vol.Required("entity_id"): cv.entity_id,
+            vol.Optional("debounce_seconds", default=2): vol.All(
+                int, vol.Range(min=0)
+            ),
+            vol.Optional("gate"): GATE_SCHEMA,
+            vol.Optional("sensor"): SENSOR_DISPLAY_SCHEMA,
+        }
+    ),
+    # presence_cycle
+    vol.Schema(
+        {
+            vol.Required("type"): "presence_cycle",
+            vol.Required("entity_id"): cv.entity_id,
+            vol.Optional("gate"): GATE_SCHEMA,
+            vol.Optional("sensor"): SENSOR_DISPLAY_SCHEMA,
+        }
+    ),
+    # sensor_threshold
+    vol.Schema(
+        {
+            vol.Required("type"): "sensor_threshold",
+            vol.Required("entity_id"): cv.entity_id,
+            vol.Required("threshold"): vol.Coerce(float),
+            vol.Optional("operator", default="above"): vol.In(
+                ["above", "below", "equal"]
+            ),
+            vol.Optional("gate"): GATE_SCHEMA,
+            vol.Optional("sensor"): SENSOR_DISPLAY_SCHEMA,
+        }
+    ),
 )
 
 COMPLETION_SCHEMA = vol.Any(
@@ -126,6 +182,7 @@ COMPLETION_SCHEMA = vol.Any(
             vol.Required("type"): "sensor_state",
             vol.Required("entity_id"): cv.entity_id,
             vol.Optional("state", default="on"): cv.string,
+            vol.Optional("gate"): GATE_SCHEMA,
             vol.Optional("sensor"): SENSOR_DISPLAY_SCHEMA,
         }
     ),
@@ -134,6 +191,7 @@ COMPLETION_SCHEMA = vol.Any(
         {
             vol.Required("type"): "contact",
             vol.Required("entity_id"): cv.entity_id,
+            vol.Optional("gate"): GATE_SCHEMA,
             vol.Optional("sensor"): SENSOR_DISPLAY_SCHEMA,
         }
     ),
@@ -143,6 +201,7 @@ COMPLETION_SCHEMA = vol.Any(
             vol.Required("type"): "contact_cycle",
             vol.Required("entity_id"): cv.entity_id,
             vol.Optional("debounce_seconds", default=2): vol.All(int, vol.Range(min=0)),
+            vol.Optional("gate"): GATE_SCHEMA,
             vol.Optional("sensor"): SENSOR_DISPLAY_SCHEMA,
         }
     ),
@@ -151,6 +210,7 @@ COMPLETION_SCHEMA = vol.Any(
         {
             vol.Required("type"): "presence_cycle",
             vol.Required("entity_id"): cv.entity_id,
+            vol.Optional("gate"): GATE_SCHEMA,
             vol.Optional("sensor"): SENSOR_DISPLAY_SCHEMA,
         }
     ),
@@ -163,6 +223,45 @@ COMPLETION_SCHEMA = vol.Any(
             vol.Optional("operator", default="above"): vol.In(
                 ["above", "below", "equal"]
             ),
+            vol.Optional("gate"): GATE_SCHEMA,
+            vol.Optional("sensor"): SENSOR_DISPLAY_SCHEMA,
+        }
+    ),
+    # ── Cross-stage detectors (primarily trigger types, also usable as completions)
+    # power_cycle
+    vol.Schema(
+        {
+            vol.Required("type"): "power_cycle",
+            vol.Optional("power_sensor"): cv.entity_id,
+            vol.Optional("current_sensor"): cv.entity_id,
+            vol.Optional("power_threshold", default=10.0): cv.positive_float,
+            vol.Optional("current_threshold", default=0.04): cv.positive_float,
+            vol.Optional("cooldown_minutes", default=5): cv.positive_int,
+            vol.Optional("gate"): GATE_SCHEMA,
+            vol.Optional("sensor"): SENSOR_DISPLAY_SCHEMA,
+        }
+    ),
+    # state_change
+    vol.Schema(
+        {
+            vol.Required("type"): "state_change",
+            vol.Required("entity_id"): cv.entity_id,
+            vol.Required("from"): cv.string,
+            vol.Required("to"): cv.string,
+            vol.Optional("gate"): GATE_SCHEMA,
+            vol.Optional("sensor"): SENSOR_DISPLAY_SCHEMA,
+        }
+    ),
+    # duration
+    vol.Schema(
+        {
+            vol.Required("type"): "duration",
+            vol.Required("entity_id"): cv.entity_id,
+            vol.Optional("state", default="on"): cv.string,
+            vol.Required("duration_hours"): vol.All(
+                vol.Coerce(float), vol.Range(min=0, min_included=False)
+            ),
+            vol.Optional("gate"): GATE_SCHEMA,
             vol.Optional("sensor"): SENSOR_DISPLAY_SCHEMA,
         }
     ),

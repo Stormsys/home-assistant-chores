@@ -27,14 +27,14 @@ class TestNeedsAttentionBinarySensor:
         sensor = NeedsAttentionBinarySensor(
             _make_coordinator_mock(), chore, _make_entry_mock()
         )
-        assert sensor._attr_unique_id == f"{DOMAIN}_{chore.id}_attention"
+        assert sensor._attr_unique_id == f"{DOMAIN}_{chore.id}_needs_attention"
 
     def test_name(self):
         chore = Chore(daily_manual_config())
         sensor = NeedsAttentionBinarySensor(
             _make_coordinator_mock(), chore, _make_entry_mock()
         )
-        assert chore.name in sensor._attr_name
+        assert sensor._attr_name == "Needs Attention"
 
     def test_off_when_inactive(self):
         chore = Chore(daily_manual_config())

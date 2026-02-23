@@ -18,20 +18,36 @@ async def async_get_config_entry_diagnostics(
 
     chores_data = {}
     for chore_id, chore in coordinator.chores.items():
+        # Trigger display info
+        trigger_sensor_cfg = chore.trigger.sensor_config or {}
+        trigger_info = {
+            "type": chore.trigger_type,
+            "state": chore.trigger.state.value,
+            "name": trigger_sensor_cfg.get("name"),
+            "snapshot": chore.trigger.snapshot_state(),
+        }
+
+        # Completion display info
+        completion_sensor_cfg = chore.completion.sensor_config or {}
+        completion_info = {
+            "type": chore.completion_type,
+            "state": chore.completion.state.value,
+            "name": completion_sensor_cfg.get("name"),
+            "snapshot": chore.completion.snapshot_state(),
+        }
+
         chores_data[chore_id] = {
-            "name": chore.name,
+            "chore_name": chore.name,
+            "description": getattr(chore, "_description", None),
+            "context": getattr(chore, "_context", None),
             "icon": chore.icon,
             "state": chore.state.value,
             "state_entered_at": chore.state_entered_at.isoformat(),
-            "trigger_type": chore.trigger_type,
-            "trigger_state": chore.trigger.state.value,
-            "completion_type": chore.completion_type,
-            "completion_state": chore.completion.state.value,
+            "trigger": trigger_info,
+            "completion": completion_info,
             "due_since": chore.due_since.isoformat() if chore.due_since else None,
             "last_completed": chore.last_completed.isoformat() if chore.last_completed else None,
             "forced": chore.forced,
-            "trigger_snapshot": chore.trigger.snapshot_state(),
-            "completion_snapshot": chore.completion.snapshot_state(),
             "completion_history_count": len(chore.completion_history),
         }
 

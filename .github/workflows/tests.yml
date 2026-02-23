@@ -25,14 +25,15 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pytest pytest-asyncio freezegun voluptuous
-          pip install --no-deps homeassistant
+          pip install --no-deps 'homeassistant>=2024.1.0,<2027.0'
 
           # Install the subset of HA runtime deps the test suite needs.
           # Heavy deps (cryptography, jwt, etc.) are stubbed in conftest.py.
           pip install \
             yarl aiohttp async-timeout python-slugify \
             ciso8601 orjson ulid-transform awesomeversion \
-            voluptuous-serialize async-interrupt
+            voluptuous-serialize async-interrupt \
+            pyyaml propcache annotatedyaml
 
       - name: Run tests
         run: pytest tests/ -v --tb=short

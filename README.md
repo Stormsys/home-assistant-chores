@@ -69,8 +69,8 @@ Every chore is built from three components:
 
 | Component | Purpose | Types |
 |-----------|---------|-------|
-| **Trigger** | What makes the chore due | `daily`, `power_cycle`, `state_change` |
-| **Completion** | How the chore gets marked done | `manual`, `contact`, `contact_cycle`, `presence_cycle`, `sensor_state` |
+| **Trigger** | What makes the chore due | `daily`, `weekly`, `power_cycle`, `state_change`, `duration`, + cross-stage types |
+| **Completion** | How the chore gets marked done | `manual`, `contact`, `contact_cycle`, `presence_cycle`, `sensor_state`, `sensor_threshold`, + cross-stage types |
 | **Reset** | When it goes back to inactive | `delay`, `daily_reset` (or auto-selected defaults) |
 
 **Triggers** at a glance:
@@ -78,8 +78,10 @@ Every chore is built from three components:
 | Type | Use case |
 |------|----------|
 | `daily` | Fixed time each day, with optional gate (e.g. "after 6am, but only once I'm out of bed") |
+| `weekly` | Specific days and times (e.g. "Wed 17:00 and Fri 18:00"), with optional gate |
 | `power_cycle` | Smart plug detects an appliance finishing a cycle |
 | `state_change` | Any entity transitions between two states |
+| `duration` | Entity stays in a target state for N hours (e.g. clothes on drying rack for 48h) |
 
 **Completions** at a glance:
 
@@ -90,6 +92,9 @@ Every chore is built from three components:
 | `contact_cycle` | 2 | Contact opens *then* closes (pill box, cupboard) |
 | `presence_cycle` | 2 | Person leaves *then* returns home (walks, errands) |
 | `sensor_state` | 1 | Any entity enters a target state |
+| `sensor_threshold` | 1 | Numeric sensor crosses a threshold (above/below/equal) |
+
+**Cross-stage types:** Most detector types can be used in either trigger or completion position. For example, `sensor_state` can be a trigger (chore becomes due when sensor enters target state) or a completion (chore is completed when sensor enters target state). See the [Configuration Reference](docs/configuration.md) for details.
 
 Full YAML reference with all parameters: **[Configuration Reference](docs/configuration.md)**
 

@@ -8,14 +8,14 @@ import pytest
 from conftest import MockHass, make_state_change_event, setup_listeners_capturing
 
 from custom_components.chores.const import CompletionType, SubState
-from custom_components.chores.completions import (
-    ContactCompletion,
-    ContactCycleCompletion,
-    ManualCompletion,
-    PresenceCycleCompletion,
-    SensorStateCompletion,
-    SensorThresholdCompletion,
-    create_completion,
+from custom_components.chores.completions import CompletionStage, create_completion
+from custom_components.chores.detectors import (
+    ContactCycleDetector,
+    ContactDetector,
+    ManualDetector,
+    PresenceCycleDetector,
+    SensorStateDetector,
+    SensorThresholdDetector,
 )
 
 
@@ -24,20 +24,20 @@ from custom_components.chores.completions import (
 
 class TestBaseCompletionBehavior:
     def test_initial_state(self):
-        c = ManualCompletion({"type": "manual"})
+        c = create_completion({"type": "manual"})
         assert c.state == SubState.IDLE
         assert c.steps_done == 0
         assert c.enabled is False
 
     def test_enable_disable(self):
-        c = ManualCompletion({"type": "manual"})
+        c = create_completion({"type": "manual"})
         c.enable()
         assert c.enabled is True
         c.disable()
         assert c.enabled is False
 
     def test_reset(self):
-        c = ManualCompletion({"type": "manual"})
+        c = create_completion({"type": "manual"})
         c.enable()
         c.set_state(SubState.DONE)
         c.reset()
@@ -46,33 +46,33 @@ class TestBaseCompletionBehavior:
         assert c.enabled is False
 
     def test_set_state_active_sets_steps(self):
-        c = ManualCompletion({"type": "manual"})
+        c = create_completion({"type": "manual"})
         c.set_state(SubState.ACTIVE)
         assert c.steps_done == 1
 
     def test_set_state_done_sets_steps_total(self):
-        c = ManualCompletion({"type": "manual"})
+        c = create_completion({"type": "manual"})
         assert c.steps_total == 1
         c.set_state(SubState.DONE)
         assert c.steps_done == 1
 
     def test_set_state_returns_false_if_unchanged(self):
-        c = ManualCompletion({"type": "manual"})
+        c = create_completion({"type": "manual"})
         assert c.set_state(SubState.IDLE) is False
 
     def test_set_state_returns_true_if_changed(self):
-        c = ManualCompletion({"type": "manual"})
+        c = create_completion({"type": "manual"})
         assert c.set_state(SubState.DONE) is True
 
     def test_snapshot_restore(self):
-        c = ManualCompletion({"type": "manual"})
+        c = create_completion({"type": "manual"})
         c.enable()
         c.set_state(SubState.DONE)
         snap = c.snapshot_state()
         assert snap["state"] == "done"
         assert snap["enabled"] is True
         assert snap["steps_done"] == 1
-        c2 = ManualCompletion({"type": "manual"})
+        c2 = create_completion({"type": "manual"})
         c2.restore_state(snap)
         assert c2.state == SubState.DONE
         assert c2.enabled is True
@@ -84,16 +84,16 @@ class TestBaseCompletionBehavior:
 
 class TestManualCompletion:
     def test_type(self):
-        c = ManualCompletion({"type": "manual"})
+        c = create_completion({"type": "manual"})
         assert c.completion_type == CompletionType.MANUAL
 
     def test_steps_total(self):
-        c = ManualCompletion({"type": "manual"})
+        c = create_completion({"type": "manual"})
         assert c.steps_total == 1
 
     def test_extra_attributes(self):
         hass = MockHass()
-        c = ManualCompletion({"type": "manual"})
+        c = create_completion({"type": "manual"})
         attrs = c.extra_attributes(hass)
         assert attrs["completion_type"] == "manual"
         assert attrs["steps_total"] == 1
@@ -105,7 +105,7 @@ class TestManualCompletion:
 
 class TestSensorStateCompletion:
     def _make(self, target_state="on"):
-        return SensorStateCompletion({
+        return create_completion({
             "type": "sensor_state",
             "entity_id": "sensor.some_sensor",
             "state": target_state,
@@ -135,7 +135,7 @@ class TestSensorStateCompletion:
 
 class TestContactCompletion:
     def _make(self):
-        return ContactCompletion({
+        return create_completion({
             "type": "contact",
             "entity_id": "binary_sensor.door_contact",
         })
@@ -162,7 +162,7 @@ class TestContactCompletion:
 
 class TestContactCycleCompletion:
     def _make(self):
-        return ContactCycleCompletion({
+        return create_completion({
             "type": "contact_cycle",
             "entity_id": "binary_sensor.door_contact",
         })
@@ -176,14 +176,14 @@ class TestContactCycleCompletion:
         assert c.steps_total == 2
 
     def test_step1_step2_lifecycle(self):
-        """Test the two-step lifecycle: IDLE → ACTIVE → DONE."""
+        """Test the two-step lifecycle: IDLE -> ACTIVE -> DONE."""
         c = self._make()
         c.enable()
-        # Step 1: contact opens → ACTIVE
+        # Step 1: contact opens -> ACTIVE
         c.set_state(SubState.ACTIVE)
         assert c.state == SubState.ACTIVE
         assert c.steps_done == 1
-        # Step 2: contact closes → DONE
+        # Step 2: contact closes -> DONE
         c.set_state(SubState.DONE)
         assert c.state == SubState.DONE
         assert c.steps_done == 2
@@ -202,46 +202,46 @@ class TestContactCycleCompletion:
 
 class TestPresenceCycleCompletion:
     def test_type(self):
-        c = PresenceCycleCompletion({
+        c = create_completion({
             "type": "presence_cycle",
             "entity_id": "person.alice",
         })
         assert c.completion_type == CompletionType.PRESENCE_CYCLE
 
     def test_steps_total(self):
-        c = PresenceCycleCompletion({
+        c = create_completion({
             "type": "presence_cycle",
             "entity_id": "person.alice",
         })
         assert c.steps_total == 2
 
     def test_person_entity_uses_not_home_home(self):
-        c = PresenceCycleCompletion({
+        c = create_completion({
             "type": "presence_cycle",
             "entity_id": "person.alice",
         })
-        assert c._away_state == "not_home"
-        assert c._home_state == "home"
+        assert c.detector._away_state == "not_home"
+        assert c.detector._home_state == "home"
 
     def test_device_tracker_uses_not_home_home(self):
-        c = PresenceCycleCompletion({
+        c = create_completion({
             "type": "presence_cycle",
             "entity_id": "device_tracker.phone",
         })
-        assert c._away_state == "not_home"
-        assert c._home_state == "home"
+        assert c.detector._away_state == "not_home"
+        assert c.detector._home_state == "home"
 
     def test_binary_sensor_uses_off_on(self):
-        c = PresenceCycleCompletion({
+        c = create_completion({
             "type": "presence_cycle",
             "entity_id": "binary_sensor.potty_holder",
         })
-        assert c._away_state == "off"
-        assert c._home_state == "on"
+        assert c.detector._away_state == "off"
+        assert c.detector._home_state == "on"
 
     def test_step1_step2_lifecycle(self):
-        """Leave → return cycle."""
-        c = PresenceCycleCompletion({
+        """Leave -> return cycle."""
+        c = create_completion({
             "type": "presence_cycle",
             "entity_id": "person.alice",
         })
@@ -258,7 +258,7 @@ class TestPresenceCycleCompletion:
     def test_extra_attributes(self):
         hass = MockHass()
         hass.states.set("person.alice", "home")
-        c = PresenceCycleCompletion({
+        c = create_completion({
             "type": "presence_cycle",
             "entity_id": "person.alice",
         })
@@ -275,23 +275,28 @@ class TestPresenceCycleCompletion:
 class TestCreateCompletionFactory:
     def test_manual(self):
         c = create_completion({"type": "manual"})
-        assert isinstance(c, ManualCompletion)
+        assert isinstance(c, CompletionStage)
+        assert isinstance(c.detector, ManualDetector)
 
     def test_sensor_state(self):
         c = create_completion({"type": "sensor_state", "entity_id": "sensor.x"})
-        assert isinstance(c, SensorStateCompletion)
+        assert isinstance(c, CompletionStage)
+        assert isinstance(c.detector, SensorStateDetector)
 
     def test_contact(self):
         c = create_completion({"type": "contact", "entity_id": "binary_sensor.x"})
-        assert isinstance(c, ContactCompletion)
+        assert isinstance(c, CompletionStage)
+        assert isinstance(c.detector, ContactDetector)
 
     def test_contact_cycle(self):
         c = create_completion({"type": "contact_cycle", "entity_id": "binary_sensor.x"})
-        assert isinstance(c, ContactCycleCompletion)
+        assert isinstance(c, CompletionStage)
+        assert isinstance(c.detector, ContactCycleDetector)
 
     def test_presence_cycle(self):
         c = create_completion({"type": "presence_cycle", "entity_id": "person.x"})
-        assert isinstance(c, PresenceCycleCompletion)
+        assert isinstance(c, CompletionStage)
+        assert isinstance(c.detector, PresenceCycleDetector)
 
     def test_sensor_threshold(self):
         c = create_completion({
@@ -300,14 +305,16 @@ class TestCreateCompletionFactory:
             "threshold": 30.0,
             "operator": "above",
         })
-        assert isinstance(c, SensorThresholdCompletion)
+        assert isinstance(c, CompletionStage)
+        assert isinstance(c.detector, SensorThresholdDetector)
 
     def test_default_is_manual(self):
         c = create_completion({})
-        assert isinstance(c, ManualCompletion)
+        assert isinstance(c, CompletionStage)
+        assert isinstance(c.detector, ManualDetector)
 
     def test_unknown_raises(self):
-        with pytest.raises(ValueError, match="Unknown completion type"):
+        with pytest.raises(ValueError):
             create_completion({"type": "nonexistent"})
 
 
@@ -315,10 +322,10 @@ class TestCreateCompletionFactory:
 
 
 class TestContactCycleDebounce:
-    """Tests for the debounce timer in ContactCycleCompletion."""
+    """Tests for the debounce timer in ContactCycleDetector."""
 
     def _make(self, debounce_seconds=2):
-        return ContactCycleCompletion({
+        return create_completion({
             "type": "contact_cycle",
             "entity_id": "binary_sensor.door",
             "debounce_seconds": debounce_seconds,
@@ -339,9 +346,9 @@ class TestContactCycleDebounce:
             return cancel
 
         event = make_state_change_event("binary_sensor.door", "on", "off")
-        with patch("custom_components.chores.completions.async_call_later", _fake_call_later):
+        with patch("custom_components.chores.detectors.contact_cycle.async_call_later", _fake_call_later):
             listener_cb(event)
-        assert comp._pending_active_cancel is not None
+        assert comp.detector._pending_active_cancel is not None
         # Should still be IDLE — debounce hasn't fired yet
         assert comp.state == SubState.IDLE
 
@@ -359,10 +366,10 @@ class TestContactCycleDebounce:
             return cancel
 
         event = make_state_change_event("binary_sensor.door", "on", "off")
-        with patch("custom_components.chores.completions.async_call_later", _fake_call_later):
+        with patch("custom_components.chores.detectors.contact_cycle.async_call_later", _fake_call_later):
             listener_cb(event)
         # Manually fire the deferred callback (simulating timer expiry)
-        deferred = comp._pending_active_cancel._deferred_cb
+        deferred = comp.detector._pending_active_cancel._deferred_cb
         deferred(None)  # _confirm_active(now)
         assert comp.state == SubState.ACTIVE
         on_change.assert_called()
@@ -382,15 +389,15 @@ class TestContactCycleDebounce:
 
         # Simulate open
         event_open = make_state_change_event("binary_sensor.door", "on", "off")
-        with patch("custom_components.chores.completions.async_call_later", _fake_call_later):
+        with patch("custom_components.chores.detectors.contact_cycle.async_call_later", _fake_call_later):
             listener_cb(event_open)
-        pending = comp._pending_active_cancel
+        pending = comp.detector._pending_active_cancel
         assert pending is not None
 
         # Simulate close before debounce fires
         event_close = make_state_change_event("binary_sensor.door", "off", "on")
         listener_cb(event_close)
-        assert comp._pending_active_cancel is None
+        assert comp.detector._pending_active_cancel is None
         assert comp.state == SubState.IDLE
         pending.assert_called_once()  # The cancel callable was invoked
 
@@ -399,10 +406,10 @@ class TestContactCycleDebounce:
         comp = self._make()
         comp.enable()
         cancel_mock = MagicMock()
-        comp._pending_active_cancel = cancel_mock
+        comp.detector._pending_active_cancel = cancel_mock
         comp.reset()
         cancel_mock.assert_called_once()
-        assert comp._pending_active_cancel is None
+        assert comp.detector._pending_active_cancel is None
 
     def test_step2_close_from_active(self):
         """Closing while ACTIVE completes the cycle (step 2)."""
@@ -412,7 +419,7 @@ class TestContactCycleDebounce:
         state_cbs, _, on_change = setup_listeners_capturing(hass, comp)
         listener_cb = state_cbs[0]
 
-        comp.set_state(SubState.ACTIVE)
+        comp.detector.set_state(SubState.ACTIVE)
         event_close = make_state_change_event("binary_sensor.door", "off", "on")
         listener_cb(event_close)
         assert comp.state == SubState.DONE
@@ -429,7 +436,7 @@ class TestContactCycleDebounce:
         event = make_state_change_event("binary_sensor.door", "on", None)
         listener_cb(event)
         assert comp.state == SubState.IDLE
-        assert comp._pending_active_cancel is None
+        assert comp.detector._pending_active_cancel is None
 
     def test_ignores_unavailable_old_state(self):
         """Events where old_state is unavailable are ignored."""
@@ -454,17 +461,20 @@ class TestContactCycleDebounce:
         listener_cb(event)
         assert comp.state == SubState.IDLE
 
-    def test_disabled_listener_is_noop(self):
-        """When disabled, listener fires but does nothing."""
+    def test_disabled_listener_does_not_propagate(self):
+        """When disabled, detector may process events but outer callback is not called."""
         comp = self._make()
         # NOT enabled
         hass = MockHass()
         state_cbs, _, on_change = setup_listeners_capturing(hass, comp)
         listener_cb = state_cbs[0]
 
-        event = make_state_change_event("binary_sensor.door", "on", "off")
+        # Firing a "close from ACTIVE" event while disabled — detector processes
+        # but CompletionStage._on_detector_change returns early
+        comp.detector.set_state(SubState.ACTIVE)
+        event = make_state_change_event("binary_sensor.door", "off", "on")
         listener_cb(event)
-        assert comp.state == SubState.IDLE
+        # Outer callback should not be called
         on_change.assert_not_called()
 
 
@@ -473,7 +483,7 @@ class TestContactCycleDebounce:
 
 class TestPresenceCycleStartupFiltering:
     def test_ignores_startup_events(self):
-        comp = PresenceCycleCompletion({
+        comp = create_completion({
             "type": "presence_cycle",
             "entity_id": "person.alice",
         })
@@ -487,7 +497,7 @@ class TestPresenceCycleStartupFiltering:
         assert comp.state == SubState.IDLE
 
     def test_ignores_unavailable_old_state(self):
-        comp = PresenceCycleCompletion({
+        comp = create_completion({
             "type": "presence_cycle",
             "entity_id": "person.alice",
         })
@@ -500,8 +510,9 @@ class TestPresenceCycleStartupFiltering:
         listener_cb(event)
         assert comp.state == SubState.IDLE
 
-    def test_disabled_listener_is_noop(self):
-        comp = PresenceCycleCompletion({
+    def test_disabled_listener_does_not_propagate(self):
+        """When disabled, outer callback is not called."""
+        comp = create_completion({
             "type": "presence_cycle",
             "entity_id": "person.alice",
         })
@@ -512,12 +523,12 @@ class TestPresenceCycleStartupFiltering:
 
         event = make_state_change_event("person.alice", "not_home", "home")
         listener_cb(event)
-        assert comp.state == SubState.IDLE
+        # Detector state changes (leave detected), but outer callback not called
         on_change.assert_not_called()
 
     def test_full_leave_return_via_listener(self):
         """Full cycle driven via the actual listener callback."""
-        comp = PresenceCycleCompletion({
+        comp = create_completion({
             "type": "presence_cycle",
             "entity_id": "person.alice",
         })
@@ -543,8 +554,9 @@ class TestPresenceCycleStartupFiltering:
 
 
 class TestSensorStateCompletionEdgeCases:
-    def test_disabled_listener_is_noop(self):
-        comp = SensorStateCompletion({
+    def test_disabled_listener_does_not_propagate(self):
+        """When disabled, detector processes but outer callback not called."""
+        comp = create_completion({
             "type": "sensor_state",
             "entity_id": "sensor.test",
             "state": "on",
@@ -556,11 +568,11 @@ class TestSensorStateCompletionEdgeCases:
 
         event = make_state_change_event("sensor.test", "on", "off")
         listener_cb(event)
-        assert comp.state == SubState.IDLE
+        # Detector may change state, but outer callback not called
         on_change.assert_not_called()
 
     def test_new_state_none_is_noop(self):
-        comp = SensorStateCompletion({
+        comp = create_completion({
             "type": "sensor_state",
             "entity_id": "sensor.test",
             "state": "on",
@@ -576,8 +588,8 @@ class TestSensorStateCompletionEdgeCases:
         assert comp.state == SubState.IDLE
 
     def test_extra_attributes_entity_not_found(self):
-        """Entity not in hass.states → watched_entity_state=None."""
-        comp = SensorStateCompletion({
+        """Entity not in hass.states -> watched_entity_state=None."""
+        comp = create_completion({
             "type": "sensor_state",
             "entity_id": "sensor.nonexistent",
             "state": "on",
@@ -588,7 +600,7 @@ class TestSensorStateCompletionEdgeCases:
 
     def test_already_done_ignores_duplicate(self):
         """If already DONE, another matching event doesn't re-trigger."""
-        comp = SensorStateCompletion({
+        comp = create_completion({
             "type": "sensor_state",
             "entity_id": "sensor.test",
             "state": "on",
@@ -610,7 +622,7 @@ class TestSensorStateCompletionEdgeCases:
 
 class TestSensorThresholdCompletion:
     def _make(self, operator="above", threshold=30.0):
-        return SensorThresholdCompletion({
+        return create_completion({
             "type": "sensor_threshold",
             "entity_id": "sensor.temperature",
             "threshold": threshold,
@@ -626,12 +638,12 @@ class TestSensorThresholdCompletion:
         assert c.steps_total == 1
 
     def test_default_operator_is_above(self):
-        c = SensorThresholdCompletion({
+        c = create_completion({
             "type": "sensor_threshold",
             "entity_id": "sensor.x",
             "threshold": 10,
         })
-        assert c._operator == "above"
+        assert c.detector._operator == "above"
 
     def test_extra_attributes(self):
         hass = MockHass()
@@ -683,7 +695,7 @@ class TestSensorThresholdCompletion:
 
 class TestSensorThresholdCompletionListener:
     def _make(self, operator="above", threshold=30.0):
-        return SensorThresholdCompletion({
+        return create_completion({
             "type": "sensor_threshold",
             "entity_id": "sensor.temperature",
             "threshold": threshold,
@@ -745,7 +757,7 @@ class TestSensorThresholdCompletionListener:
 
         event = make_state_change_event("sensor.temperature", "35.0", "25.0")
         listener_cb(event)
-        assert comp.state == SubState.IDLE
+        # Detector state changes but outer callback not called
         on_change.assert_not_called()
 
     def test_listener_ignores_when_already_done(self):
@@ -791,7 +803,7 @@ class TestSensorThresholdCompletionListener:
 
 class TestSensorThresholdCompletionEnable:
     def _make(self, operator="above", threshold=30.0):
-        return SensorThresholdCompletion({
+        return create_completion({
             "type": "sensor_threshold",
             "entity_id": "sensor.temperature",
             "threshold": threshold,

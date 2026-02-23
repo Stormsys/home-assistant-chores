@@ -55,7 +55,7 @@ class TestChoreStateSensor:
         sensor = ChoreStateSensor(coord, chore, entry)
 
         assert sensor._attr_unique_id == f"{DOMAIN}_{chore.id}"
-        assert sensor._attr_name == chore.name
+        assert sensor._attr_name == "Chore"
 
     def test_native_value_reflects_state(self):
         chore = Chore(daily_manual_config())
@@ -94,8 +94,7 @@ class TestTriggerProgressSensor:
         sensor = TriggerProgressSensor(coord, chore, entry)
 
         assert sensor._attr_unique_id == f"{DOMAIN}_{chore.id}_trigger"
-        assert "Daily at" in sensor._attr_name
-        assert "08:00" in sensor._attr_name
+        assert sensor._attr_name == "Trigger Detector"
         assert sensor._icon_idle == "mdi:calendar-clock"
         assert sensor._icon_active == "mdi:calendar-alert"
         assert sensor._icon_done == "mdi:calendar-check"
@@ -106,8 +105,7 @@ class TestTriggerProgressSensor:
         entry = _make_entry_mock()
         sensor = TriggerProgressSensor(coord, chore, entry)
 
-        assert "Wed" in sensor._attr_name
-        assert "Fri" in sensor._attr_name
+        assert sensor._attr_name == "Trigger Detector"
         assert sensor._icon_idle == "mdi:calendar-week"
 
     def test_power_cycle_defaults(self):
@@ -128,7 +126,7 @@ class TestTriggerProgressSensor:
         entry = _make_entry_mock()
         sensor = TriggerProgressSensor(coord, chore, entry)
 
-        assert sensor._attr_name == "Power Monitor"
+        assert sensor._attr_name == "Trigger Detector"
         assert sensor._icon_idle == "mdi:power-plug-off"
 
     def test_state_change_defaults(self):
@@ -137,7 +135,7 @@ class TestTriggerProgressSensor:
         entry = _make_entry_mock()
         sensor = TriggerProgressSensor(coord, chore, entry)
 
-        assert sensor._attr_name == "State Monitor"
+        assert sensor._attr_name == "Trigger Detector"
         assert sensor._icon_idle == "mdi:toggle-switch-off-outline"
 
     def test_duration_defaults(self):
@@ -157,7 +155,7 @@ class TestTriggerProgressSensor:
         entry = _make_entry_mock()
         sensor = TriggerProgressSensor(coord, chore, entry)
 
-        assert sensor._attr_name == "Duration Monitor"
+        assert sensor._attr_name == "Trigger Detector"
         assert sensor._icon_idle == "mdi:timer-off-outline"
 
     def test_native_value(self):
@@ -207,7 +205,7 @@ class TestCompletionProgressSensor:
         sensor = CompletionProgressSensor(coord, chore, entry)
 
         assert sensor._attr_unique_id == f"{DOMAIN}_{chore.id}_completion"
-        assert sensor._attr_name == "Contact"
+        assert sensor._attr_name == "Completion Detector"
         assert sensor._icon_idle == "mdi:door-closed"
 
     def test_contact_cycle_defaults(self):
@@ -216,7 +214,7 @@ class TestCompletionProgressSensor:
         entry = _make_entry_mock()
         sensor = CompletionProgressSensor(coord, chore, entry)
 
-        assert sensor._attr_name == "Contact Cycle"
+        assert sensor._attr_name == "Completion Detector"
         assert sensor._icon_active == "mdi:door-open"
         assert sensor._icon_done == "mdi:door-closed-lock"
 
@@ -226,7 +224,7 @@ class TestCompletionProgressSensor:
         entry = _make_entry_mock()
         sensor = CompletionProgressSensor(coord, chore, entry)
 
-        assert sensor._attr_name == "Presence"
+        assert sensor._attr_name == "Completion Detector"
         assert sensor._icon_idle == "mdi:home"
         assert sensor._icon_active == "mdi:home-export-outline"
         assert sensor._icon_done == "mdi:home-import-outline"
@@ -237,7 +235,7 @@ class TestCompletionProgressSensor:
         entry = _make_entry_mock()
         sensor = CompletionProgressSensor(coord, chore, entry)
 
-        assert sensor._attr_name == "Sensor Threshold"
+        assert sensor._attr_name == "Completion Detector"
         assert sensor._icon_idle == "mdi:gauge-empty"
         assert sensor._icon_active == "mdi:gauge"
         assert sensor._icon_done == "mdi:gauge-full"
@@ -286,7 +284,7 @@ class TestResetProgressSensor:
         sensor = ResetProgressSensor(coord, chore, entry)
 
         assert sensor._attr_unique_id == f"{DOMAIN}_{chore.id}_reset"
-        assert sensor._attr_name == "Reset"
+        assert sensor._attr_name == "Reset Detector"
 
     def test_idle_when_not_completed(self):
         chore = Chore(daily_manual_config())

@@ -57,20 +57,28 @@ class TestSubState:
 
 
 class TestTriggerType:
-    def test_has_five_types(self):
-        assert len(TriggerType) == 5
+    def test_has_ten_types(self):
+        assert len(TriggerType) == 10
 
     def test_values(self):
-        expected = {"power_cycle", "state_change", "daily", "weekly", "duration"}
+        expected = {
+            "power_cycle", "state_change", "daily", "weekly", "duration",
+            "sensor_state", "contact", "contact_cycle", "presence_cycle",
+            "sensor_threshold",
+        }
         assert {t.value for t in TriggerType} == expected
 
 
 class TestCompletionType:
-    def test_has_six_types(self):
-        assert len(CompletionType) == 6
+    def test_has_nine_types(self):
+        assert len(CompletionType) == 9
 
     def test_values(self):
-        expected = {"manual", "sensor_state", "contact", "contact_cycle", "presence_cycle", "sensor_threshold"}
+        expected = {
+            "manual", "sensor_state", "contact", "contact_cycle",
+            "presence_cycle", "sensor_threshold",
+            "power_cycle", "state_change", "duration",
+        }
         assert {t.value for t in CompletionType} == expected
 
 

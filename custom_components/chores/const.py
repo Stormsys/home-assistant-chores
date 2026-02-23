@@ -33,20 +33,51 @@ class SubState(StrEnum):
     DONE = "done"
 
 
-# ── Trigger types ───────────────────────────────────────────────────
-class TriggerType(StrEnum):
-    """Available trigger types."""
+# ── Detector types (unified namespace for all detection patterns) ──
+class DetectorType(StrEnum):
+    """All detection patterns available across trigger and completion stages."""
 
     POWER_CYCLE = "power_cycle"
     STATE_CHANGE = "state_change"
     DAILY = "daily"
     WEEKLY = "weekly"
     DURATION = "duration"
+    MANUAL = "manual"
+    SENSOR_STATE = "sensor_state"
+    CONTACT = "contact"
+    CONTACT_CYCLE = "contact_cycle"
+    PRESENCE_CYCLE = "presence_cycle"
+    SENSOR_THRESHOLD = "sensor_threshold"
 
 
-# ── Completion types ────────────────────────────────────────────────
+# ── Trigger types (backwards-compat alias into DetectorType) ───────
+class TriggerType(StrEnum):
+    """Available trigger types.
+
+    Includes trigger-only detectors (daily, weekly) and cross-stage
+    detectors that can also be used as completions.
+    """
+
+    POWER_CYCLE = "power_cycle"
+    STATE_CHANGE = "state_change"
+    DAILY = "daily"
+    WEEKLY = "weekly"
+    DURATION = "duration"
+    # Cross-stage detectors (also available as completion types)
+    SENSOR_STATE = "sensor_state"
+    CONTACT = "contact"
+    CONTACT_CYCLE = "contact_cycle"
+    PRESENCE_CYCLE = "presence_cycle"
+    SENSOR_THRESHOLD = "sensor_threshold"
+
+
+# ── Completion types (backwards-compat alias into DetectorType) ────
 class CompletionType(StrEnum):
-    """Available completion types."""
+    """Available completion types.
+
+    Includes completion-only detectors (manual) and cross-stage
+    detectors that can also be used as triggers.
+    """
 
     MANUAL = "manual"
     SENSOR_STATE = "sensor_state"
@@ -54,6 +85,10 @@ class CompletionType(StrEnum):
     CONTACT_CYCLE = "contact_cycle"
     PRESENCE_CYCLE = "presence_cycle"
     SENSOR_THRESHOLD = "sensor_threshold"
+    # Cross-stage detectors (also available as trigger types)
+    POWER_CYCLE = "power_cycle"
+    STATE_CHANGE = "state_change"
+    DURATION = "duration"
 
 
 # ── Reset types ─────────────────────────────────────────────────────

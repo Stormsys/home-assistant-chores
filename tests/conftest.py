@@ -41,6 +41,26 @@ def _ensure_stub(name: str, attrs: dict[str, Any] | None = None) -> types.Module
 # atomicwrites (needed for homeassistant.util.file)
 _ensure_stub("atomicwrites", {"AtomicWriter": type("AtomicWriter", (), {})})
 
+# aiozoneinfo (needed by homeassistant.util.dt in newer HA versions)
+_ensure_stub("aiozoneinfo", {
+    "async_get_time_zone": lambda tz_name: None,
+})
+
+# homeassistant.helpers.template — imported by helpers.event; pulls in jinja2,
+# lru-dict, and other heavy deps we don't need.  Stub before importing event.
+# Template may be a package (newer HA) or a single module (older HA), so we
+# stub both the package and its submodules.
+_template_attrs = {
+    "RenderInfo": type("RenderInfo", (), {}),
+    "Template": type("Template", (), {}),
+    "result_as_boolean": lambda *a: False,
+}
+_tmpl = _ensure_stub("homeassistant.helpers.template", _template_attrs)
+_tmpl.__path__ = []  # make it a package so submodule imports don't fail
+_ensure_stub("homeassistant.helpers.template.render_info", {
+    "RenderInfo": _template_attrs["RenderInfo"],
+})
+
 
 # ── Now the real HA imports that DO work ────────────────────────────
 from homeassistant.core import HomeAssistant, callback, Event  # noqa: E402
@@ -197,29 +217,38 @@ sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1]
 from custom_components.chores.const import (  # noqa: E402
     ChoreState,
     CompletionType,
+    DetectorType,
     ResetType,
     SubState,
     TriggerType,
 )
 from custom_components.chores.chore_core import Chore  # noqa: E402
 from custom_components.chores.triggers import (  # noqa: E402
+    TriggerStage,
     BaseTrigger,
-    DailyTrigger,
-    DurationTrigger,
-    PowerCycleTrigger,
-    StateChangeTrigger,
-    WeeklyTrigger,
     create_trigger,
 )
 from custom_components.chores.completions import (  # noqa: E402
+    CompletionStage,
     BaseCompletion,
-    ContactCompletion,
-    ContactCycleCompletion,
-    ManualCompletion,
-    PresenceCycleCompletion,
-    SensorStateCompletion,
     create_completion,
 )
+from custom_components.chores.detectors import (  # noqa: E402
+    BaseDetector,
+    ContactCycleDetector,
+    ContactDetector,
+    DailyDetector,
+    DurationDetector,
+    ManualDetector,
+    PowerCycleDetector,
+    PresenceCycleDetector,
+    SensorStateDetector,
+    SensorThresholdDetector,
+    StateChangeDetector,
+    WeeklyDetector,
+    create_detector,
+)
+from custom_components.chores.gate import Gate  # noqa: E402
 from custom_components.chores.resets import (  # noqa: E402
     BaseReset,
     DailyReset,
@@ -290,11 +319,12 @@ def hass():
 
 
 def setup_listeners_capturing(hass, component, on_change=None):
-    """Set up listeners on a trigger/completion while capturing the callbacks.
+    """Set up listeners on a trigger/completion/detector while capturing the callbacks.
 
-    Patches async_track_state_change_event and async_track_time_change so
-    the inner listener callbacks are stored on hass for direct invocation.
-    Returns (state_listeners, time_listeners) lists of captured callbacks.
+    Patches async_track_state_change_event, async_track_time_change, and
+    async_call_later across all detector modules and gate.py so the inner
+    listener callbacks are stored on hass for direct invocation.
+    Returns (state_listeners, time_listeners, on_change) lists of captured callbacks.
     """
     if on_change is None:
         on_change = MagicMock()
@@ -321,11 +351,37 @@ def setup_listeners_capturing(hass, component, on_change=None):
         cancel._deferred_cb = cb
         return cancel
 
-    with patch("custom_components.chores.triggers.async_track_state_change_event", _fake_track_state), \
-         patch("custom_components.chores.triggers.async_track_time_change", _fake_track_time), \
-         patch("custom_components.chores.completions.async_track_state_change_event", _fake_track_state), \
-         patch("custom_components.chores.completions.async_call_later", _fake_call_later):
+    # Patch all detector modules and gate that import event helpers
+    _det = "custom_components.chores.detectors"
+    _state_modules = [
+        f"{_det}.power_cycle",
+        f"{_det}.state_change",
+        f"{_det}.duration",
+        f"{_det}.sensor_state",
+        f"{_det}.contact",
+        f"{_det}.contact_cycle",
+        f"{_det}.presence_cycle",
+        f"{_det}.sensor_threshold",
+        "custom_components.chores.gate",
+    ]
+    _time_modules = [f"{_det}.daily", f"{_det}.weekly"]
+    _call_later_modules = [f"{_det}.contact_cycle"]
+
+    patches = []
+    for mod in _state_modules:
+        patches.append(patch(f"{mod}.async_track_state_change_event", _fake_track_state))
+    for mod in _time_modules:
+        patches.append(patch(f"{mod}.async_track_time_change", _fake_track_time))
+    for mod in _call_later_modules:
+        patches.append(patch(f"{mod}.async_call_later", _fake_call_later))
+
+    for p in patches:
+        p.start()
+    try:
         component.async_setup_listeners(hass, on_change)
+    finally:
+        for p in patches:
+            p.stop()
 
     return state_listeners, time_listeners, on_change
 

@@ -35,9 +35,7 @@ class TestForceDueButton:
         coord = _make_coordinator_mock()
         btn = ForceDueButton(coord, chore)
 
-        assert "Force" in btn._attr_name
-        assert chore.name in btn._attr_name
-        assert "Due" in btn._attr_name
+        assert btn._attr_name == "Force Due"
 
     def test_icon(self):
         chore = Chore(daily_manual_config())
@@ -69,9 +67,7 @@ class TestForceInactiveButton:
         coord = _make_coordinator_mock()
         btn = ForceInactiveButton(coord, chore)
 
-        assert "Force" in btn._attr_name
-        assert chore.name in btn._attr_name
-        assert "Inactive" in btn._attr_name
+        assert btn._attr_name == "Force Inactive"
 
     def test_icon(self):
         chore = Chore(daily_manual_config())
@@ -103,9 +99,7 @@ class TestForceCompleteButton:
         coord = _make_coordinator_mock()
         btn = ForceCompleteButton(coord, chore)
 
-        assert "Force" in btn._attr_name
-        assert chore.name in btn._attr_name
-        assert "Complete" in btn._attr_name
+        assert btn._attr_name == "Force Complete"
 
     def test_icon(self):
         chore = Chore(daily_manual_config())
