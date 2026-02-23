@@ -9,7 +9,6 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.config import async_integration_yaml_config
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.service import async_register_admin_service
@@ -385,7 +384,17 @@ def _async_setup_services(hass: HomeAssistant) -> None:
 
     async def handle_reload(call) -> None:
         """Reload the Chores YAML configuration."""
-        conf = await async_integration_yaml_config(hass, DOMAIN)
+        try:
+            from homeassistant.config import async_integration_yaml_config
+            conf = await async_integration_yaml_config(hass, DOMAIN)
+        except ImportError:
+            from homeassistant.config import async_hass_config_yaml
+            try:
+                raw_conf = await async_hass_config_yaml(hass)
+                conf = CONFIG_SCHEMA(raw_conf)
+            except vol.Invalid:
+                conf = None
+
         if conf is None:
             _LOGGER.error("Failed to reload Chores: invalid YAML configuration")
             return
