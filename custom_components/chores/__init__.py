@@ -97,6 +97,18 @@ TRIGGER_SCHEMA = vol.Any(
             vol.Optional("sensor"): SENSOR_DISPLAY_SCHEMA,
         }
     ),
+    # duration (fires after entity stays in target state for N hours)
+    vol.Schema(
+        {
+            vol.Required("type"): "duration",
+            vol.Required("entity_id"): cv.entity_id,
+            vol.Optional("state", default="on"): cv.string,
+            vol.Required("duration_hours"): vol.All(
+                vol.Coerce(float), vol.Range(min=0, min_included=False)
+            ),
+            vol.Optional("sensor"): SENSOR_DISPLAY_SCHEMA,
+        }
+    ),
 )
 
 COMPLETION_SCHEMA = vol.Any(
@@ -264,6 +276,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 chore_config.get("id", "unknown"),
                 err,
             )
+
+    # Remove devices for chores that no longer exist in YAML (handles reload)
+    current_chore_ids = set(coordinator.chores.keys())
+    device_registry = dr.async_get(hass)
+    for device in dr.async_entries_for_config_entry(device_registry, entry.entry_id):
+        chore_ids_for_device = {
+            identifier[1]
+            for identifier in device.identifiers
+            if identifier[0] == DOMAIN
+        }
+        if chore_ids_for_device and not chore_ids_for_device & current_chore_ids:
+            _LOGGER.info(
+                "Removing orphaned device %s (chore IDs %s no longer in YAML)",
+                device.name,
+                chore_ids_for_device,
+            )
+            device_registry.async_remove_device(device.id)
 
     # Store coordinator
     hass.data[DOMAIN][entry.entry_id] = {

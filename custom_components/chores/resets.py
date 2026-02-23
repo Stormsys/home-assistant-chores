@@ -317,6 +317,6 @@ def create_reset(config: dict[str, Any] | None, trigger_type: TriggerType, trigg
             schedule.append((day_int, t))
         return ImplicitWeeklyReset(schedule=schedule)
 
-    # power_cycle, state_change -> immediate reset
+    # power_cycle, state_change, duration -> immediate reset
     return ImplicitEventReset()
 

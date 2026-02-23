@@ -42,7 +42,7 @@ from .const import (
     TriggerType,
 )
 from .coordinator import ChoresCoordinator
-from .triggers import DailyTrigger, WeeklyTrigger, WEEKDAY_SHORT_NAMES
+from .triggers import DailyTrigger, DurationTrigger, WeeklyTrigger, WEEKDAY_SHORT_NAMES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -204,10 +204,20 @@ class TriggerProgressSensor(CoordinatorEntity[ChoresCoordinator], SensorEntity):
             default_icon_idle = "mdi:power-plug-off"
             default_icon_active = "mdi:power-plug"
             default_icon_done = "mdi:power-plug-outline"
-        else:  # state_change
+        elif trigger.trigger_type == TriggerType.STATE_CHANGE:
             default_name = "State Monitor"
             default_icon_idle = "mdi:toggle-switch-off-outline"
             default_icon_active = "mdi:toggle-switch"
+            default_icon_done = "mdi:check-circle-outline"
+        elif trigger.trigger_type == TriggerType.DURATION:
+            default_name = "Duration Monitor"
+            default_icon_idle = "mdi:timer-off-outline"
+            default_icon_active = "mdi:timer-sand"
+            default_icon_done = "mdi:timer-check-outline"
+        else:
+            default_name = "Trigger"
+            default_icon_idle = "mdi:help-circle-outline"
+            default_icon_active = "mdi:alert-circle-outline"
             default_icon_done = "mdi:check-circle-outline"
 
         self._attr_name = sensor_cfg.get("name", default_name)

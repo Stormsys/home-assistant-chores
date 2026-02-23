@@ -170,6 +170,30 @@ chores:
         type: manual
 
     # ─────────────────────────────────────────────
+    # CLOTHES RACK
+    # Duration: nag after rack has been open 48+ hours
+    # Contact cycle (open then close) to complete
+    # ─────────────────────────────────────────────
+    - id: collect_clothes_rack
+      name: "Collect Clothes Rack"
+      icon: mdi:hanger
+
+      trigger:
+        type: duration
+        entity_id: binary_sensor.clothes_rack_contact
+        state: "on"
+        duration_hours: 48
+        sensor:
+          name: "Rack Timer"
+          icon_idle: mdi:timer-off
+          icon_active: mdi:timer-sand
+          icon_done: mdi:timer-alert
+
+      completion:
+        type: contact_cycle
+        entity_id: binary_sensor.clothes_rack_contact
+
+    # ─────────────────────────────────────────────
     # BINS
     # Triggered by helper (set by automation on bin night),
     # presence cycle (take bin out + come back) to complete

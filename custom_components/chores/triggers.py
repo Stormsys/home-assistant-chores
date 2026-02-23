@@ -705,6 +705,147 @@ class WeeklyTrigger(BaseTrigger):
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# DurationTrigger
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class DurationTrigger(BaseTrigger):
+    """Trigger that fires after an entity has been in a target state for a duration.
+
+    Active: entity is in the target state but required duration has not yet elapsed.
+    Done: entity has remained in the target state for >= duration_hours.
+
+    If the entity leaves the target state before the duration elapses, the
+    trigger resets to idle and the timer restarts next time it enters the state.
+
+    The ``_state_since`` timestamp is persisted so that the timer survives
+    HA restarts.  Transitions through ``unavailable`` / ``unknown`` (common
+    during reboots) are ignored so the timer is not accidentally cleared.
+    """
+
+    trigger_type = TriggerType.DURATION
+
+    def __init__(self, config: dict[str, Any]) -> None:
+        super().__init__(config)
+        self._entity_id: str = config["entity_id"]
+        self._target_state: str = config.get("state", "on")
+        self._duration_hours: float = config["duration_hours"]
+        self._state_since: datetime | None = None
+
+    def _reset_internal(self) -> None:
+        self._state_since = None
+
+    def async_setup_listeners(
+        self, hass: HomeAssistant, on_state_change: callback
+    ) -> None:
+        @callback
+        def _handle_state_change(event: Event) -> None:
+            new_state = event.data.get("new_state")
+            old_state = event.data.get("old_state")
+            if not new_state:
+                return
+
+            new_val = new_state.state
+            old_val = old_state.state if old_state else None
+
+            # Ignore startup/reconnection events where old state is absent
+            # or transitional, so a reboot's unavailable→on sequence does
+            # not re-record _state_since and lose the persisted timestamp.
+            if old_val is None or old_val in ("unavailable", "unknown"):
+                return
+            # Ignore transient unavailability — do not clear the timer.
+            if new_val in ("unavailable", "unknown"):
+                return
+            # Ignore attribute-only changes (state value unchanged).
+            if old_val == new_val:
+                return
+
+            if new_val == self._target_state and self._state == SubState.IDLE:
+                self._state_since = dt_util.utcnow()
+                self.set_state(SubState.ACTIVE)
+                on_state_change()
+            elif new_val != self._target_state and self._state == SubState.ACTIVE:
+                self._state_since = None
+                self.set_state(SubState.IDLE)
+                on_state_change()
+
+        unsub = async_track_state_change_event(
+            hass, [self._entity_id], _handle_state_change
+        )
+        self._listeners.append(unsub)
+
+    def evaluate(self, hass: HomeAssistant) -> SubState:
+        """Check duration timer on every poll.
+
+        Also handles startup recovery: if HA starts while the entity is
+        already in the target state, the trigger transitions to ACTIVE
+        and honours a persisted ``_state_since`` if available.
+        """
+        now = dt_util.utcnow()
+
+        if self._state == SubState.IDLE:
+            state = hass.states.get(self._entity_id)
+            if (
+                state
+                and state.state not in ("unknown", "unavailable")
+                and state.state == self._target_state
+            ):
+                # Use persisted timestamp when available (restored after restart);
+                # fall back to now for a fresh start.
+                self._state_since = self._state_since or now
+                self.set_state(SubState.ACTIVE)
+
+        if self._state == SubState.ACTIVE and self._state_since is not None:
+            # Safety check — if the entity somehow left the target state
+            # between polls (and the listener missed it), reset. Treat
+            # unavailable/unknown as "still in target state" so transient
+            # connectivity blips don't clear the timer.
+            state = hass.states.get(self._entity_id)
+            if (
+                state
+                and state.state not in ("unknown", "unavailable")
+                and state.state != self._target_state
+            ):
+                self._state_since = None
+                self.set_state(SubState.IDLE)
+            else:
+                elapsed = (now - self._state_since).total_seconds()
+                if elapsed >= self._duration_hours * 3600:
+                    self.set_state(SubState.DONE)
+
+        return self._state
+
+    def extra_attributes(self, hass: HomeAssistant) -> dict[str, Any]:
+        state = hass.states.get(self._entity_id)
+        attrs: dict[str, Any] = {
+            "trigger_type": self.trigger_type.value,
+            "state_entered_at": self._state_entered_at.isoformat(),
+            "watched_entity": self._entity_id,
+            "watched_entity_state": state.state if state else None,
+            "target_state": self._target_state,
+            "duration_hours": self._duration_hours,
+            "state_since": self._state_since.isoformat() if self._state_since else None,
+        }
+        if self._state_since is not None:
+            elapsed = (dt_util.utcnow() - self._state_since).total_seconds()
+            total = self._duration_hours * 3600
+            remaining = max(0, total - elapsed)
+            attrs["time_remaining_seconds"] = int(remaining)
+        else:
+            attrs["time_remaining_seconds"] = None
+        return attrs
+
+    def _snapshot_internal(self) -> dict[str, Any]:
+        return {
+            "state_since": self._state_since.isoformat() if self._state_since else None,
+        }
+
+    def _restore_internal(self, data: dict[str, Any]) -> None:
+        ss = data.get("state_since")
+        self._state_since = dt_util.parse_datetime(ss) if ss else None
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # Factory
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -713,6 +854,7 @@ TRIGGER_FACTORY: dict[str, type[BaseTrigger]] = {
     TriggerType.STATE_CHANGE: StateChangeTrigger,
     TriggerType.DAILY: DailyTrigger,
     TriggerType.WEEKLY: WeeklyTrigger,
+    TriggerType.DURATION: DurationTrigger,
 }
 
 

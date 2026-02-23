@@ -56,6 +56,8 @@ def _describe_pending(forced: bool, trigger_type: str | None) -> str:
         return "Scheduled time reached — waiting for gate condition"
     if trigger_type == TriggerType.WEEKLY:
         return "Weekly schedule triggered — waiting for gate condition"
+    if trigger_type == TriggerType.DURATION:
+        return "Entity in target state — duration timer running"
     return "Trigger active — waiting to become due"
 
 
@@ -71,6 +73,8 @@ def _describe_due(forced: bool, trigger_type: str | None) -> str:
         return "Scheduled time reached — ready to complete"
     if trigger_type == TriggerType.WEEKLY:
         return "Weekly schedule triggered — ready to complete"
+    if trigger_type == TriggerType.DURATION:
+        return "Duration threshold reached — ready to complete"
     return "Ready to complete"
 
 

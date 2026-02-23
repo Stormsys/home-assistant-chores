@@ -41,6 +41,7 @@ class TriggerType(StrEnum):
     STATE_CHANGE = "state_change"
     DAILY = "daily"
     WEEKLY = "weekly"
+    DURATION = "duration"
 
 
 # ── Completion types ────────────────────────────────────────────────

@@ -92,9 +92,9 @@ Defines all shared constants, enums, and event/attribute names. Always import co
 Key enums:
 - `ChoreState` — the 5-state chore lifecycle.
 - `SubState` — the 3-state sub-state for triggers and completions.
-- `TriggerType` — `power_cycle`, `state_change`, `daily`.
+- `TriggerType` — `power_cycle`, `state_change`, `daily`, `weekly`, `duration`.
 - `CompletionType` — `manual`, `sensor_state`, `contact`, `contact_cycle`, `presence_cycle`.
-- `ResetType` — `delay`, `daily_reset`, `implicit_daily`, `implicit_event`.
+- `ResetType` — `delay`, `daily_reset`, `implicit_daily`, `implicit_weekly`, `implicit_event`.
 
 Key constants:
 - `DOMAIN = "chores"`
@@ -118,6 +118,8 @@ Trigger types detect *when* a chore should become due.
 | `power_cycle` | `PowerCycleTrigger` | Active when power/current above threshold; done after cooldown once power drops. |
 | `state_change` | `StateChangeTrigger` | Active when entity is in `from` state; done when it transitions to `to` state. |
 | `daily` | `DailyTrigger` | Done at configured time daily. Optionally stays pending until a gate entity enters the expected state. |
+| `weekly` | `WeeklyTrigger` | Like daily but fires on specific weekdays at per-day times. Supports gate. |
+| `duration` | `DurationTrigger` | Active when entity enters target state; done after it has remained in that state for `duration_hours`. Timer survives HA restarts and ignores transient `unavailable`/`unknown` states. |
 
 **Adding a new trigger:**
 1. Subclass `BaseTrigger`.
@@ -162,7 +164,8 @@ Reset types determine *when* a completed chore returns to `inactive`.
 | `delay` | `DelayReset` | Resets after N minutes (0 = immediate). |
 | `daily_reset` | `DailyReset` | Resets at a specific clock time each day. |
 | `implicit_daily` | `ImplicitDailyReset` | Resets at the next occurrence of the daily trigger time (default for `daily` triggers). |
-| `implicit_event` | `ImplicitEventReset` | Resets immediately (default for `power_cycle` and `state_change` triggers). |
+| `implicit_weekly` | `ImplicitWeeklyReset` | Resets at the next occurrence of the weekly trigger schedule (default for `weekly` triggers). |
+| `implicit_event` | `ImplicitEventReset` | Resets immediately (default for `power_cycle`, `state_change`, and `duration` triggers). |
 
 If no `reset` block is provided in YAML, `create_reset()` picks a sensible default based on the trigger type.
 
@@ -244,8 +247,10 @@ Creates sensor entities per chore:
 | Trigger type | Default name | idle icon | active icon | done icon |
 |---|---|---|---|---|
 | `daily` | `Daily at HH:MM` | `mdi:calendar-clock` | `mdi:calendar-alert` | `mdi:calendar-check` |
+| `weekly` | `Wed 17:00, Fri 18:00` | `mdi:calendar-week` | `mdi:calendar-alert` | `mdi:calendar-check` |
 | `power_cycle` | `Power Monitor` | `mdi:power-plug-off` | `mdi:power-plug` | `mdi:power-plug-outline` |
 | `state_change` | `State Monitor` | `mdi:toggle-switch-off-outline` | `mdi:toggle-switch` | `mdi:check-circle-outline` |
+| `duration` | `Duration Monitor` | `mdi:timer-off-outline` | `mdi:timer-sand` | `mdi:timer-check-outline` |
 
 **Default completion sensor names/icons** (overridden by `sensor:` block in YAML):
 
@@ -338,6 +343,13 @@ trigger:
   gate:                                # Optional: stay pending until gate is met
     entity_id: binary_sensor.bedroom_door_contact
     state: "on"
+
+# Duration (fires after entity stays in target state for N hours)
+trigger:
+  type: duration
+  entity_id: binary_sensor.clothes_rack_contact
+  state: "on"                          # Default: "on"
+  duration_hours: 48                   # Required (positive, float allowed)
 ```
 
 ### Completion Types
@@ -373,7 +385,7 @@ completion:
 ### Reset Types
 
 ```yaml
-# Immediate (default for power_cycle / state_change triggers)
+# Immediate (default for power_cycle / state_change / duration triggers)
 reset:
   type: delay
   minutes: 0
