@@ -1,11 +1,11 @@
 """Tests for completions.py — all 5 completion types + factory."""
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from conftest import MockHass, make_state_change_event
+from conftest import MockHass, make_state_change_event, setup_listeners_capturing
 
 from custom_components.chores.const import CompletionType, SubState
 from custom_components.chores.completions import (
@@ -299,3 +299,297 @@ class TestCreateCompletionFactory:
     def test_unknown_raises(self):
         with pytest.raises(ValueError, match="Unknown completion type"):
             create_completion({"type": "nonexistent"})
+
+
+# ── ContactCycleCompletion debounce tests ─────────────────────────────
+
+
+class TestContactCycleDebounce:
+    """Tests for the debounce timer in ContactCycleCompletion."""
+
+    def _make(self, debounce_seconds=2):
+        return ContactCycleCompletion({
+            "type": "contact_cycle",
+            "entity_id": "binary_sensor.door",
+            "debounce_seconds": debounce_seconds,
+        })
+
+    def test_debounce_timer_started_on_open(self):
+        """Opening sets up a pending callback, not immediate ACTIVE."""
+        comp = self._make()
+        comp.enable()
+        hass = MockHass()
+        state_cbs, _, on_change = setup_listeners_capturing(hass, comp)
+        assert len(state_cbs) == 1
+        listener_cb = state_cbs[0]
+
+        def _fake_call_later(hass_arg, delay, cb):
+            cancel = MagicMock()
+            cancel._deferred_cb = cb
+            return cancel
+
+        event = make_state_change_event("binary_sensor.door", "on", "off")
+        with patch("custom_components.chores.completions.async_call_later", _fake_call_later):
+            listener_cb(event)
+        assert comp._pending_active_cancel is not None
+        # Should still be IDLE — debounce hasn't fired yet
+        assert comp.state == SubState.IDLE
+
+    def test_debounce_fires_transitions_to_active(self):
+        """When debounce timer fires, completion goes ACTIVE."""
+        comp = self._make()
+        comp.enable()
+        hass = MockHass()
+        state_cbs, _, on_change = setup_listeners_capturing(hass, comp)
+        listener_cb = state_cbs[0]
+
+        def _fake_call_later(hass_arg, delay, cb):
+            cancel = MagicMock()
+            cancel._deferred_cb = cb
+            return cancel
+
+        event = make_state_change_event("binary_sensor.door", "on", "off")
+        with patch("custom_components.chores.completions.async_call_later", _fake_call_later):
+            listener_cb(event)
+        # Manually fire the deferred callback (simulating timer expiry)
+        deferred = comp._pending_active_cancel._deferred_cb
+        deferred(None)  # _confirm_active(now)
+        assert comp.state == SubState.ACTIVE
+        on_change.assert_called()
+
+    def test_bounce_back_cancels_debounce(self):
+        """Closing before debounce fires cancels the pending ACTIVE."""
+        comp = self._make()
+        comp.enable()
+        hass = MockHass()
+        state_cbs, _, on_change = setup_listeners_capturing(hass, comp)
+        listener_cb = state_cbs[0]
+
+        def _fake_call_later(hass_arg, delay, cb):
+            cancel = MagicMock()
+            cancel._deferred_cb = cb
+            return cancel
+
+        # Simulate open
+        event_open = make_state_change_event("binary_sensor.door", "on", "off")
+        with patch("custom_components.chores.completions.async_call_later", _fake_call_later):
+            listener_cb(event_open)
+        pending = comp._pending_active_cancel
+        assert pending is not None
+
+        # Simulate close before debounce fires
+        event_close = make_state_change_event("binary_sensor.door", "off", "on")
+        listener_cb(event_close)
+        assert comp._pending_active_cancel is None
+        assert comp.state == SubState.IDLE
+        pending.assert_called_once()  # The cancel callable was invoked
+
+    def test_reset_cancels_pending_debounce(self):
+        """Resetting the completion cancels any pending debounce timer."""
+        comp = self._make()
+        comp.enable()
+        cancel_mock = MagicMock()
+        comp._pending_active_cancel = cancel_mock
+        comp.reset()
+        cancel_mock.assert_called_once()
+        assert comp._pending_active_cancel is None
+
+    def test_step2_close_from_active(self):
+        """Closing while ACTIVE completes the cycle (step 2)."""
+        comp = self._make()
+        comp.enable()
+        hass = MockHass()
+        state_cbs, _, on_change = setup_listeners_capturing(hass, comp)
+        listener_cb = state_cbs[0]
+
+        comp.set_state(SubState.ACTIVE)
+        event_close = make_state_change_event("binary_sensor.door", "off", "on")
+        listener_cb(event_close)
+        assert comp.state == SubState.DONE
+        on_change.assert_called()
+
+    def test_ignores_startup_events(self):
+        """Events with old_state=None (startup) are ignored."""
+        comp = self._make()
+        comp.enable()
+        hass = MockHass()
+        state_cbs, _, on_change = setup_listeners_capturing(hass, comp)
+        listener_cb = state_cbs[0]
+
+        event = make_state_change_event("binary_sensor.door", "on", None)
+        listener_cb(event)
+        assert comp.state == SubState.IDLE
+        assert comp._pending_active_cancel is None
+
+    def test_ignores_unavailable_old_state(self):
+        """Events where old_state is unavailable are ignored."""
+        comp = self._make()
+        comp.enable()
+        hass = MockHass()
+        state_cbs, _, on_change = setup_listeners_capturing(hass, comp)
+        listener_cb = state_cbs[0]
+
+        event = make_state_change_event("binary_sensor.door", "on", "unavailable")
+        listener_cb(event)
+        assert comp.state == SubState.IDLE
+
+    def test_ignores_unknown_old_state(self):
+        comp = self._make()
+        comp.enable()
+        hass = MockHass()
+        state_cbs, _, _ = setup_listeners_capturing(hass, comp)
+        listener_cb = state_cbs[0]
+
+        event = make_state_change_event("binary_sensor.door", "on", "unknown")
+        listener_cb(event)
+        assert comp.state == SubState.IDLE
+
+    def test_disabled_listener_is_noop(self):
+        """When disabled, listener fires but does nothing."""
+        comp = self._make()
+        # NOT enabled
+        hass = MockHass()
+        state_cbs, _, on_change = setup_listeners_capturing(hass, comp)
+        listener_cb = state_cbs[0]
+
+        event = make_state_change_event("binary_sensor.door", "on", "off")
+        listener_cb(event)
+        assert comp.state == SubState.IDLE
+        on_change.assert_not_called()
+
+
+# ── PresenceCycleCompletion startup filtering ─────────────────────────
+
+
+class TestPresenceCycleStartupFiltering:
+    def test_ignores_startup_events(self):
+        comp = PresenceCycleCompletion({
+            "type": "presence_cycle",
+            "entity_id": "person.alice",
+        })
+        comp.enable()
+        hass = MockHass()
+        state_cbs, _, _ = setup_listeners_capturing(hass, comp)
+        listener_cb = state_cbs[0]
+
+        event = make_state_change_event("person.alice", "not_home", None)
+        listener_cb(event)
+        assert comp.state == SubState.IDLE
+
+    def test_ignores_unavailable_old_state(self):
+        comp = PresenceCycleCompletion({
+            "type": "presence_cycle",
+            "entity_id": "person.alice",
+        })
+        comp.enable()
+        hass = MockHass()
+        state_cbs, _, _ = setup_listeners_capturing(hass, comp)
+        listener_cb = state_cbs[0]
+
+        event = make_state_change_event("person.alice", "not_home", "unavailable")
+        listener_cb(event)
+        assert comp.state == SubState.IDLE
+
+    def test_disabled_listener_is_noop(self):
+        comp = PresenceCycleCompletion({
+            "type": "presence_cycle",
+            "entity_id": "person.alice",
+        })
+        # NOT enabled
+        hass = MockHass()
+        state_cbs, _, on_change = setup_listeners_capturing(hass, comp)
+        listener_cb = state_cbs[0]
+
+        event = make_state_change_event("person.alice", "not_home", "home")
+        listener_cb(event)
+        assert comp.state == SubState.IDLE
+        on_change.assert_not_called()
+
+    def test_full_leave_return_via_listener(self):
+        """Full cycle driven via the actual listener callback."""
+        comp = PresenceCycleCompletion({
+            "type": "presence_cycle",
+            "entity_id": "person.alice",
+        })
+        comp.enable()
+        hass = MockHass()
+        state_cbs, _, on_change = setup_listeners_capturing(hass, comp)
+        listener_cb = state_cbs[0]
+
+        # Step 1: leave
+        event_leave = make_state_change_event("person.alice", "not_home", "home")
+        listener_cb(event_leave)
+        assert comp.state == SubState.ACTIVE
+        assert on_change.call_count == 1
+
+        # Step 2: return
+        event_return = make_state_change_event("person.alice", "home", "not_home")
+        listener_cb(event_return)
+        assert comp.state == SubState.DONE
+        assert on_change.call_count == 2
+
+
+# ── SensorStateCompletion disabled/new_state=None tests ──────────────
+
+
+class TestSensorStateCompletionEdgeCases:
+    def test_disabled_listener_is_noop(self):
+        comp = SensorStateCompletion({
+            "type": "sensor_state",
+            "entity_id": "sensor.test",
+            "state": "on",
+        })
+        # NOT enabled
+        hass = MockHass()
+        state_cbs, _, on_change = setup_listeners_capturing(hass, comp)
+        listener_cb = state_cbs[0]
+
+        event = make_state_change_event("sensor.test", "on", "off")
+        listener_cb(event)
+        assert comp.state == SubState.IDLE
+        on_change.assert_not_called()
+
+    def test_new_state_none_is_noop(self):
+        comp = SensorStateCompletion({
+            "type": "sensor_state",
+            "entity_id": "sensor.test",
+            "state": "on",
+        })
+        comp.enable()
+        hass = MockHass()
+        state_cbs, _, _ = setup_listeners_capturing(hass, comp)
+        listener_cb = state_cbs[0]
+
+        event = MagicMock()
+        event.data = {"entity_id": "sensor.test", "new_state": None, "old_state": MagicMock()}
+        listener_cb(event)
+        assert comp.state == SubState.IDLE
+
+    def test_extra_attributes_entity_not_found(self):
+        """Entity not in hass.states → watched_entity_state=None."""
+        comp = SensorStateCompletion({
+            "type": "sensor_state",
+            "entity_id": "sensor.nonexistent",
+            "state": "on",
+        })
+        hass = MockHass()
+        attrs = comp.extra_attributes(hass)
+        assert attrs["watched_entity_state"] is None
+
+    def test_already_done_ignores_duplicate(self):
+        """If already DONE, another matching event doesn't re-trigger."""
+        comp = SensorStateCompletion({
+            "type": "sensor_state",
+            "entity_id": "sensor.test",
+            "state": "on",
+        })
+        comp.enable()
+        comp.set_state(SubState.DONE)
+        hass = MockHass()
+        state_cbs, _, on_change = setup_listeners_capturing(hass, comp)
+        listener_cb = state_cbs[0]
+
+        event = make_state_change_event("sensor.test", "on", "off")
+        listener_cb(event)
+        assert comp.state == SubState.DONE
+        on_change.assert_not_called()

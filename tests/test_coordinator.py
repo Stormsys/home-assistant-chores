@@ -190,3 +190,75 @@ class TestPersistChore:
         store.set_chore_state.assert_called_once_with(
             "feed_fay_morning", chore.snapshot_state()
         )
+
+
+class TestBuildData:
+    def test_contains_all_chores(self):
+        coord, _ = _make_coordinator()
+        c1 = Chore(daily_manual_config())
+        c2 = Chore(power_cycle_config())
+        coord.register_chore(c1)
+        coord.register_chore(c2)
+        data = coord._build_data()
+        assert c1.id in data
+        assert c2.id in data
+
+    def test_data_matches_to_state_dict(self):
+        hass = MockHass()
+        coord, _ = _make_coordinator(hass)
+        chore = Chore(daily_manual_config())
+        coord.register_chore(chore)
+        data = coord._build_data()
+        assert data[chore.id] == chore.to_state_dict(hass)
+
+
+class TestAsyncUpdateData:
+    @pytest.mark.asyncio
+    async def test_evaluates_all_chores_and_saves(self):
+        """_async_update_data calls evaluate on each chore and saves."""
+        hass = MockHass()
+        coord, store = _make_coordinator(hass)
+        # Use state_change trigger so evaluate() doesn't auto-fire
+        from conftest import state_change_presence_config
+        chore = Chore(state_change_presence_config())
+        coord.register_chore(chore)
+
+        result = await coord._async_update_data()
+        store.async_save.assert_awaited_once()
+        assert chore.id in result
+
+    @pytest.mark.asyncio
+    async def test_fires_event_on_state_change(self):
+        """If evaluate returns a previous state, event is fired."""
+        hass = MockHass()
+        coord, store = _make_coordinator(hass)
+        from conftest import state_change_presence_config
+        chore = Chore(state_change_presence_config())
+        coord.register_chore(chore)
+
+        # Force trigger to DONE so evaluate transitions INACTIVE → DUE
+        chore.trigger.set_state(SubState.DONE)
+
+        await coord._async_update_data()
+        assert chore.state == ChoreState.DUE
+        assert len(hass.bus.events) == 1
+        assert hass.bus.events[0][0] == EVENT_CHORE_DUE
+
+
+class TestOnChoreStateChange:
+    def test_callback_fires_event_and_persists(self):
+        hass = MockHass()
+        coord, store = _make_coordinator(hass)
+        chore = Chore(daily_manual_config())
+        coord.register_chore(chore)
+
+        coord._on_chore_state_change(chore.id, ChoreState.INACTIVE, ChoreState.DUE)
+        assert len(hass.bus.events) == 1
+        store.set_chore_state.assert_called()
+
+    def test_callback_with_unknown_chore_is_noop(self):
+        hass = MockHass()
+        coord, store = _make_coordinator(hass)
+        coord._on_chore_state_change("nonexistent", ChoreState.INACTIVE, ChoreState.DUE)
+        assert len(hass.bus.events) == 0
+        store.set_chore_state.assert_not_called()

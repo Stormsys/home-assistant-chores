@@ -278,12 +278,56 @@ class MockHass:
         self.bus = MockBus()
         self.data: dict[str, Any] = {}
         self.services = MagicMock()
+        # Populated by captured_listener_setup() context manager
+        self._last_state_listener: Any = None
+        self._last_time_listener: Any = None
 
 
 @pytest.fixture
 def hass():
     """Return a mock HomeAssistant instance."""
     return MockHass()
+
+
+def setup_listeners_capturing(hass, component, on_change=None):
+    """Set up listeners on a trigger/completion while capturing the callbacks.
+
+    Patches async_track_state_change_event and async_track_time_change so
+    the inner listener callbacks are stored on hass for direct invocation.
+    Returns (state_listeners, time_listeners) lists of captured callbacks.
+    """
+    if on_change is None:
+        on_change = MagicMock()
+
+    state_listeners: list[Any] = []
+    time_listeners: list[Any] = []
+
+    def _fake_track_state(hass_arg, entities, cb):
+        state_listeners.append(cb)
+        hass._last_state_listener = cb
+        unsub = MagicMock()
+        return unsub
+
+    def _fake_track_time(hass_arg, cb, **kwargs):
+        time_listeners.append(cb)
+        hass._last_time_listener = cb
+        unsub = MagicMock()
+        return unsub
+
+    def _fake_call_later(hass_arg, delay, cb):
+        """For debounce: return a cancel callable that records it was cancelled."""
+        cancel = MagicMock()
+        # Store the callback so tests can invoke it manually
+        cancel._deferred_cb = cb
+        return cancel
+
+    with patch("custom_components.chores.triggers.async_track_state_change_event", _fake_track_state), \
+         patch("custom_components.chores.triggers.async_track_time_change", _fake_track_time), \
+         patch("custom_components.chores.completions.async_track_state_change_event", _fake_track_state), \
+         patch("custom_components.chores.completions.async_call_later", _fake_call_later):
+        component.async_setup_listeners(hass, on_change)
+
+    return state_listeners, time_listeners, on_change
 
 
 # ── Helper to create HA state-change Events ─────────────────────────

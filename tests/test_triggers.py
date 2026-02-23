@@ -1,7 +1,7 @@
 """Tests for triggers.py — all 5 trigger types + factory."""
 from __future__ import annotations
 
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 from freezegun import freeze_time
@@ -615,3 +615,339 @@ class TestCreateTriggerFactory:
         import pytest
         with pytest.raises(ValueError, match="Unknown trigger type"):
             create_trigger({"type": "nonexistent"})
+
+
+# ── PowerCycleTrigger bad sensor values ───────────────────────────────
+
+
+class TestPowerCycleBadSensorValues:
+    """Test that non-numeric and edge-case sensor states don't crash."""
+
+    def _make(self):
+        return PowerCycleTrigger({
+            "type": "power_cycle",
+            "power_sensor": "sensor.power",
+            "current_sensor": "sensor.current",
+            "power_threshold": 10.0,
+            "current_threshold": 0.04,
+            "cooldown_minutes": 1,
+        })
+
+    def test_non_numeric_power_state(self):
+        """float('foobar') should be caught, not crash."""
+        hass = MockHass()
+        hass.states.set("sensor.power", "foobar")
+        hass.states.set("sensor.current", "0.01")
+        trigger = self._make()
+        result = trigger._is_above_threshold(hass)
+        assert result is False  # readable but not above
+
+    def test_non_numeric_current_state(self):
+        hass = MockHass()
+        hass.states.set("sensor.power", "5.0")
+        hass.states.set("sensor.current", "not_a_number")
+        trigger = self._make()
+        result = trigger._is_above_threshold(hass)
+        assert result is False
+
+    def test_both_non_numeric(self):
+        hass = MockHass()
+        hass.states.set("sensor.power", "abc")
+        hass.states.set("sensor.current", "xyz")
+        trigger = self._make()
+        result = trigger._is_above_threshold(hass)
+        # Both readable (not unavailable) but both fail float(), so above=False
+        assert result is False
+
+    def test_empty_string_state(self):
+        hass = MockHass()
+        hass.states.set("sensor.power", "")
+        hass.states.set("sensor.current", "0.01")
+        trigger = self._make()
+        result = trigger._is_above_threshold(hass)
+        assert result is False
+
+    def test_power_above_current_garbage(self):
+        """Power above threshold but current is garbage — still above."""
+        hass = MockHass()
+        hass.states.set("sensor.power", "50.0")
+        hass.states.set("sensor.current", "ERROR")
+        trigger = self._make()
+        result = trigger._is_above_threshold(hass)
+        assert result is True
+
+    def test_power_unavailable_current_above(self):
+        """Power unavailable but current above — still returns True."""
+        hass = MockHass()
+        hass.states.set("sensor.power", "unavailable")
+        hass.states.set("sensor.current", "1.5")
+        trigger = self._make()
+        result = trigger._is_above_threshold(hass)
+        assert result is True
+
+    def test_power_unavailable_current_below(self):
+        hass = MockHass()
+        hass.states.set("sensor.power", "unavailable")
+        hass.states.set("sensor.current", "0.01")
+        trigger = self._make()
+        result = trigger._is_above_threshold(hass)
+        assert result is False
+
+    def test_power_drop_then_rise_resets_cooldown(self):
+        """Power drops starting cooldown, then rises again — cooldown resets."""
+        hass = MockHass()
+        trigger = self._make()
+
+        # Power high → ACTIVE
+        hass.states.set("sensor.power", "50")
+        hass.states.set("sensor.current", "0.01")
+        trigger._evaluate_power(hass)
+        assert trigger.state == SubState.ACTIVE
+        assert trigger._machine_running is True
+
+        # Power drops → cooldown starts
+        hass.states.set("sensor.power", "1")
+        trigger._evaluate_power(hass)
+        assert trigger._power_dropped_at is not None
+
+        # Power rises again → cooldown cancelled
+        hass.states.set("sensor.power", "50")
+        trigger._evaluate_power(hass)
+        assert trigger._power_dropped_at is None
+        assert trigger._machine_running is True
+
+
+# ── DurationTrigger startup recovery with persisted _state_since ──────
+
+
+class TestDurationTriggerStartupRecovery:
+    def test_startup_with_persisted_state_since(self):
+        """After restart, entity in target state uses persisted _state_since."""
+        config = {
+            "type": "duration",
+            "entity_id": "binary_sensor.contact",
+            "state": "on",
+            "duration_hours": 1,
+        }
+        trigger = DurationTrigger(config)
+        hass = MockHass()
+        hass.states.set("binary_sensor.contact", "on")
+
+        # Simulate persisted state_since from 2 hours ago (timezone-aware)
+        two_hours_ago = datetime(2025, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+        trigger._state_since = two_hours_ago
+
+        with freeze_time("2025-01-15 12:30:00", tz_offset=0):
+            trigger.evaluate(hass)
+            # Should use persisted _state_since, not overwrite with now
+            assert trigger._state_since == two_hours_ago
+            # 2.5 hours > 1 hour → should be DONE
+            assert trigger.state == SubState.DONE
+
+    def test_startup_no_persisted_uses_now(self):
+        """After restart, entity in target state with no persisted time uses now."""
+        config = {
+            "type": "duration",
+            "entity_id": "binary_sensor.contact",
+            "state": "on",
+            "duration_hours": 1,
+        }
+        trigger = DurationTrigger(config)
+        hass = MockHass()
+        hass.states.set("binary_sensor.contact", "on")
+
+        with freeze_time("2025-01-15 12:00:00"):
+            trigger.evaluate(hass)
+            assert trigger.state == SubState.ACTIVE
+            # _state_since should be set to now
+            assert trigger._state_since is not None
+
+    def test_startup_entity_unavailable_stays_idle(self):
+        """If entity is unavailable on startup, stay IDLE."""
+        config = {
+            "type": "duration",
+            "entity_id": "binary_sensor.contact",
+            "state": "on",
+            "duration_hours": 1,
+        }
+        trigger = DurationTrigger(config)
+        hass = MockHass()
+        hass.states.set("binary_sensor.contact", "unavailable")
+
+        trigger.evaluate(hass)
+        assert trigger.state == SubState.IDLE
+
+    def test_safety_check_entity_left_target_between_polls(self):
+        """If entity leaves target state between polls, reset to IDLE."""
+        config = {
+            "type": "duration",
+            "entity_id": "binary_sensor.contact",
+            "state": "on",
+            "duration_hours": 48,
+        }
+        trigger = DurationTrigger(config)
+        hass = MockHass()
+        hass.states.set("binary_sensor.contact", "on")
+
+        with freeze_time("2025-01-15 12:00:00"):
+            trigger.evaluate(hass)
+            assert trigger.state == SubState.ACTIVE
+
+        # Entity changed to "off" (missed by listener)
+        hass.states.set("binary_sensor.contact", "off")
+        with freeze_time("2025-01-15 13:00:00"):
+            trigger.evaluate(hass)
+            assert trigger.state == SubState.IDLE
+            assert trigger._state_since is None
+
+    def test_safety_check_ignores_unavailable(self):
+        """Unavailable during ACTIVE doesn't reset the timer."""
+        config = {
+            "type": "duration",
+            "entity_id": "binary_sensor.contact",
+            "state": "on",
+            "duration_hours": 48,
+        }
+        trigger = DurationTrigger(config)
+        hass = MockHass()
+        hass.states.set("binary_sensor.contact", "on")
+
+        with freeze_time("2025-01-15 12:00:00"):
+            trigger.evaluate(hass)
+            assert trigger.state == SubState.ACTIVE
+            state_since = trigger._state_since
+
+        # Entity goes unavailable
+        hass.states.set("binary_sensor.contact", "unavailable")
+        with freeze_time("2025-01-15 13:00:00"):
+            trigger.evaluate(hass)
+            # Should stay ACTIVE and preserve _state_since
+            assert trigger.state == SubState.ACTIVE
+            assert trigger._state_since == state_since
+
+
+# ── DurationTrigger listener startup filtering ────────────────────────
+
+
+class TestDurationTriggerListenerFiltering:
+    """Test that DurationTrigger listeners ignore startup/reconnection events."""
+
+    def test_ignores_old_state_none(self):
+        from conftest import setup_listeners_capturing
+
+        config = {
+            "type": "duration",
+            "entity_id": "binary_sensor.contact",
+            "state": "on",
+            "duration_hours": 1,
+        }
+        trigger = DurationTrigger(config)
+        hass = MockHass()
+        state_cbs, _, on_change = setup_listeners_capturing(hass, trigger)
+        listener_cb = state_cbs[0]
+
+        event = make_state_change_event("binary_sensor.contact", "on", None)
+        listener_cb(event)
+        assert trigger.state == SubState.IDLE
+
+    def test_ignores_old_state_unavailable(self):
+        from conftest import setup_listeners_capturing
+
+        config = {
+            "type": "duration",
+            "entity_id": "binary_sensor.contact",
+            "state": "on",
+            "duration_hours": 1,
+        }
+        trigger = DurationTrigger(config)
+        hass = MockHass()
+        state_cbs, _, _ = setup_listeners_capturing(hass, trigger)
+        listener_cb = state_cbs[0]
+
+        event = make_state_change_event("binary_sensor.contact", "on", "unavailable")
+        listener_cb(event)
+        assert trigger.state == SubState.IDLE
+
+    def test_ignores_new_state_unavailable(self):
+        from conftest import setup_listeners_capturing
+
+        config = {
+            "type": "duration",
+            "entity_id": "binary_sensor.contact",
+            "state": "on",
+            "duration_hours": 1,
+        }
+        trigger = DurationTrigger(config)
+        trigger.set_state(SubState.ACTIVE)
+        trigger._state_since = datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        hass = MockHass()
+        state_cbs, _, _ = setup_listeners_capturing(hass, trigger)
+        listener_cb = state_cbs[0]
+
+        event = make_state_change_event("binary_sensor.contact", "unavailable", "on")
+        listener_cb(event)
+        # Should stay ACTIVE — unavailable ignored
+        assert trigger.state == SubState.ACTIVE
+        assert trigger._state_since is not None
+
+    def test_ignores_attribute_only_change(self):
+        from conftest import setup_listeners_capturing
+
+        config = {
+            "type": "duration",
+            "entity_id": "binary_sensor.contact",
+            "state": "on",
+            "duration_hours": 1,
+        }
+        trigger = DurationTrigger(config)
+        trigger.set_state(SubState.ACTIVE)
+        trigger._state_since = datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        hass = MockHass()
+        state_cbs, _, _ = setup_listeners_capturing(hass, trigger)
+        listener_cb = state_cbs[0]
+
+        # old_state == new_state (attribute-only change)
+        event = make_state_change_event("binary_sensor.contact", "on", "on")
+        listener_cb(event)
+        assert trigger.state == SubState.ACTIVE
+
+    def test_enters_target_state_via_listener(self):
+        from conftest import setup_listeners_capturing
+
+        config = {
+            "type": "duration",
+            "entity_id": "binary_sensor.contact",
+            "state": "on",
+            "duration_hours": 1,
+        }
+        trigger = DurationTrigger(config)
+        hass = MockHass()
+        state_cbs, _, on_change = setup_listeners_capturing(hass, trigger)
+        listener_cb = state_cbs[0]
+
+        event = make_state_change_event("binary_sensor.contact", "on", "off")
+        listener_cb(event)
+        assert trigger.state == SubState.ACTIVE
+        on_change.assert_called_once()
+
+    def test_leaves_target_state_via_listener(self):
+        from conftest import setup_listeners_capturing
+
+        config = {
+            "type": "duration",
+            "entity_id": "binary_sensor.contact",
+            "state": "on",
+            "duration_hours": 1,
+        }
+        trigger = DurationTrigger(config)
+        trigger.set_state(SubState.ACTIVE)
+        trigger._state_since = datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        hass = MockHass()
+        state_cbs, _, on_change = setup_listeners_capturing(hass, trigger)
+        listener_cb = state_cbs[0]
+
+        event = make_state_change_event("binary_sensor.contact", "off", "on")
+        listener_cb(event)
+        assert trigger.state == SubState.IDLE
+        assert trigger._state_since is None
+        on_change.assert_called_once()
