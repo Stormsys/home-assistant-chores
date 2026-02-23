@@ -33,7 +33,24 @@ class SubState(StrEnum):
     DONE = "done"
 
 
-# ── Trigger types ───────────────────────────────────────────────────
+# ── Detector types (unified namespace for all detection patterns) ──
+class DetectorType(StrEnum):
+    """All detection patterns available across trigger and completion stages."""
+
+    POWER_CYCLE = "power_cycle"
+    STATE_CHANGE = "state_change"
+    DAILY = "daily"
+    WEEKLY = "weekly"
+    DURATION = "duration"
+    MANUAL = "manual"
+    SENSOR_STATE = "sensor_state"
+    CONTACT = "contact"
+    CONTACT_CYCLE = "contact_cycle"
+    PRESENCE_CYCLE = "presence_cycle"
+    SENSOR_THRESHOLD = "sensor_threshold"
+
+
+# ── Trigger types (backwards-compat alias into DetectorType) ───────
 class TriggerType(StrEnum):
     """Available trigger types."""
 
@@ -44,7 +61,7 @@ class TriggerType(StrEnum):
     DURATION = "duration"
 
 
-# ── Completion types ────────────────────────────────────────────────
+# ── Completion types (backwards-compat alias into DetectorType) ────
 class CompletionType(StrEnum):
     """Available completion types."""
 
