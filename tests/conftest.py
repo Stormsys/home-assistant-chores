@@ -41,6 +41,21 @@ def _ensure_stub(name: str, attrs: dict[str, Any] | None = None) -> types.Module
 # atomicwrites (needed for homeassistant.util.file)
 _ensure_stub("atomicwrites", {"AtomicWriter": type("AtomicWriter", (), {})})
 
+# homeassistant.helpers.template — imported by helpers.event; pulls in jinja2,
+# lru-dict, and other heavy deps we don't need.  Stub before importing event.
+# Template may be a package (newer HA) or a single module (older HA), so we
+# stub both the package and its submodules.
+_template_attrs = {
+    "RenderInfo": type("RenderInfo", (), {}),
+    "Template": type("Template", (), {}),
+    "result_as_boolean": lambda *a: False,
+}
+_tmpl = _ensure_stub("homeassistant.helpers.template", _template_attrs)
+_tmpl.__path__ = []  # make it a package so submodule imports don't fail
+_ensure_stub("homeassistant.helpers.template.render_info", {
+    "RenderInfo": _template_attrs["RenderInfo"],
+})
+
 
 # ── Now the real HA imports that DO work ────────────────────────────
 from homeassistant.core import HomeAssistant, callback, Event  # noqa: E402
