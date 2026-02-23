@@ -67,6 +67,10 @@
     }
   },
   "services": {
+    "reload": {
+      "name": "Reload",
+      "description": "Reload the Chores integration configuration from YAML."
+    },
     "force_due": {
       "name": "Force Due",
       "description": "Force a chore to the 'due' state."

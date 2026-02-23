@@ -9,8 +9,10 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.config import async_integration_yaml_config
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.service import async_register_admin_service
 
 from .chore_core import Chore
 from .const import CONF_LOGBOOK, DOMAIN
@@ -344,7 +346,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 def _async_setup_services(hass: HomeAssistant) -> None:
     """Set up global Chores services."""
-    from .const import ATTR_CHORE_ID, SERVICE_FORCE_COMPLETE, SERVICE_FORCE_DUE, SERVICE_FORCE_INACTIVE
+    from .const import ATTR_CHORE_ID, SERVICE_FORCE_COMPLETE, SERVICE_FORCE_DUE, SERVICE_FORCE_INACTIVE, SERVICE_RELOAD
 
     if hass.services.has_service(DOMAIN, SERVICE_FORCE_DUE):
         return  # Already registered
@@ -381,6 +383,20 @@ def _async_setup_services(hass: HomeAssistant) -> None:
         else:
             _LOGGER.warning("Chore not found: %s", chore_id)
 
+    async def handle_reload(call) -> None:
+        """Reload the Chores YAML configuration."""
+        conf = await async_integration_yaml_config(hass, DOMAIN)
+        if conf is None:
+            _LOGGER.error("Failed to reload Chores: invalid YAML configuration")
+            return
+
+        hass.data[DOMAIN]["yaml_config"] = conf.get(DOMAIN, {})
+
+        for entry in hass.config_entries.async_entries(DOMAIN):
+            await hass.config_entries.async_reload(entry.entry_id)
+
+        _LOGGER.info("Chores integration reloaded successfully")
+
     service_schema = vol.Schema(
         {
             vol.Required(ATTR_CHORE_ID): cv.string,
@@ -396,12 +412,14 @@ def _async_setup_services(hass: HomeAssistant) -> None:
     hass.services.async_register(
         DOMAIN, SERVICE_FORCE_COMPLETE, handle_force_complete, schema=service_schema
     )
+    async_register_admin_service(hass, DOMAIN, SERVICE_RELOAD, handle_reload)
 
 
 def _async_remove_services(hass: HomeAssistant) -> None:
     """Remove Chores services."""
-    from .const import SERVICE_FORCE_COMPLETE, SERVICE_FORCE_DUE, SERVICE_FORCE_INACTIVE
+    from .const import SERVICE_FORCE_COMPLETE, SERVICE_FORCE_DUE, SERVICE_FORCE_INACTIVE, SERVICE_RELOAD
 
     hass.services.async_remove(DOMAIN, SERVICE_FORCE_DUE)
     hass.services.async_remove(DOMAIN, SERVICE_FORCE_INACTIVE)
     hass.services.async_remove(DOMAIN, SERVICE_FORCE_COMPLETE)
+    hass.services.async_remove(DOMAIN, SERVICE_RELOAD)

@@ -77,6 +77,7 @@ EVENT_CHORE_RESET: Final = f"{DOMAIN}.chore_reset"
 SERVICE_FORCE_DUE: Final = "force_due"
 SERVICE_FORCE_INACTIVE: Final = "force_inactive"
 SERVICE_FORCE_COMPLETE: Final = "force_complete"
+SERVICE_RELOAD: Final = "reload"
 
 # ── Attributes ──────────────────────────────────────────────────────
 ATTR_CHORE_ID: Final = "chore_id"

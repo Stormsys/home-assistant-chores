@@ -1,3 +1,7 @@
+reload:
+  name: Reload
+  description: Reload the Chores integration configuration from YAML.
+
 # Entity services (target by entity_id on main chore sensor)
 force_due:
   name: Force Due
