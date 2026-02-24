@@ -1,7 +1,7 @@
 {
   "domain": "chores",
   "name": "Chores",
-  "codeowners": [],
+  "codeowners": ["@Stormsys"],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/Stormsys/home-assistant-chores",
