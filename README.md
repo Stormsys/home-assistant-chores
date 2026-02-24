@@ -33,6 +33,8 @@ Chores you can't auto-detect are completed manually via a button or service call
 3. Find **Chores** and click **Download**
 4. Restart Home Assistant
 
+> **Note:** This integration is currently in alpha. To see alpha/beta releases in HACS, open the integration's HACS page, click the three-dot menu, and enable **Show beta versions**. Without this, HACS will only show stable releases.
+
 ### Manual
 
 1. Copy `custom_components/chores` into your `config/custom_components/` directory
